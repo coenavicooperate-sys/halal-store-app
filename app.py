@@ -9,7 +9,7 @@ from datetime import datetime
 from pathlib import Path
 
 import requests
-from PIL import Image, ImageEnhance, ExifTags
+from PIL import Image, ImageEnhance, ImageOps
 from slugify import slugify
 
 # ──────────────────────────────────────────────
@@ -51,6 +51,9 @@ LABELS = {
         "prep_same_kitchen": "Same Kitchen (Carefully Managed)",
         "prep_unknown": "Unknown",
         "top_photos": "Top Photos (Storefront / Food / Interior - 3 required)",
+        "highlights_min": "At least 1 highlight (photo + title + description) required.",
+        "menu_min": "At least 1 menu (photo + name) required.",
+        "interior_min": "At least 1 interior/exterior photo required.",
         "top_photos_desc": "",
         "cert_photos": "Certification Photos (Up to 3)",
         "cert_required": "At least 1 certification photo is required for Fully/Partially Halal Certified.",
@@ -62,13 +65,18 @@ LABELS = {
         "menu_desc": "Menu Description",
         "interior_photos": "Interior / Exterior Photos (Up to 5)",
         "submit": "Submit",
+        "confirm_title": "Confirm Before Submit",
+        "confirm_desc": "Please review the information below. Once submitted, it cannot be modified.",
+        "confirm_submit": "Submit",
+        "back_edit": "Back to Edit",
+        "confirm_and_submit": "Confirm & Submit",
         "download_zip": "Download ZIP",
         "validation_error": "Please fix the following errors:",
         "required_store": "Store Name is required.",
         "required_phone": "Phone Number is required.",
         "required_email": "Email Address is required.",
         "required_top3": "All 3 Top Photos are required.",
-        "required_highlights": "All 3 Highlights (photo, title, description) are required.",
+        "required_highlights": "At least 1 Highlight (photo, title, description) is required.",
         "required_cert": "At least 1 certification photo is required for the selected Halal level.",
         "invalid_format": "Invalid image format: {name}. Allowed: jpg, png, webp.",
         "file_too_large": "File too large: {name}. Max 10MB.",
@@ -142,6 +150,9 @@ LABELS = {
         "prep_same_kitchen": "同一キッチン（慎重に管理）",
         "prep_unknown": "不明",
         "top_photos": "TOP写真（外観 / 料理 / 内観の3枚必須）",
+        "highlights_min": "こだわりは最低1セット（写真＋表題＋説明）必要です。",
+        "menu_min": "メニューは最低1つ（写真＋メニュー名）必要です。",
+        "interior_min": "内観・外観写真は最低1枚必要です。",
         "top_photos_desc": "",
         "cert_photos": "認証写真（最大3枚）",
         "cert_required": "完全/部分ハラル認証の場合、認証写真が1枚以上必要です。",
@@ -153,13 +164,18 @@ LABELS = {
         "menu_desc": "メニュー説明",
         "interior_photos": "内観・外観写真（最大5枚）",
         "submit": "送信",
+        "confirm_title": "送信前の確認",
+        "confirm_desc": "以下の内容をご確認ください。送信後は修正できません。",
+        "confirm_submit": "送信する",
+        "back_edit": "編集に戻る",
+        "confirm_and_submit": "確認して送信",
         "download_zip": "ZIPダウンロード",
         "validation_error": "以下のエラーを修正してください：",
         "required_store": "店舗名は必須です。",
         "required_phone": "電話番号は必須です。",
         "required_email": "メールアドレスは必須です。",
         "required_top3": "TOP写真は3枚すべて必要です。",
-        "required_highlights": "こだわり3セット（写真・表題・説明）はすべて必要です。",
+        "required_highlights": "こだわりは最低1セット（写真・表題・説明）必要です。",
         "required_cert": "選択されたハラルレベルでは認証写真が1枚以上必要です。",
         "invalid_format": "無効な画像形式: {name}。jpg, png, webp のみ対応。",
         "file_too_large": "ファイルが大きすぎます: {name}。最大10MB。",
@@ -213,28 +229,11 @@ MAX_FILE_SIZE = 10 * 1024 * 1024
 
 
 def fix_exif_rotation(img: Image.Image) -> Image.Image:
+    """Fix orientation for smartphone photos using EXIF metadata."""
     try:
-        exif = img._getexif()
-        if exif is None:
-            return img
-        orientation_key = None
-        for k, v in ExifTags.TAGS.items():
-            if v == "Orientation":
-                orientation_key = k
-                break
-        if orientation_key is None or orientation_key not in exif:
-            return img
-        orientation = exif[orientation_key]
-        rotations = {
-            3: Image.Transpose.ROTATE_180,
-            6: Image.Transpose.ROTATE_270,
-            8: Image.Transpose.ROTATE_90,
-        }
-        if orientation in rotations:
-            img = img.transpose(rotations[orientation])
+        return ImageOps.exif_transpose(img)
     except Exception:
-        pass
-    return img
+        return img
 
 
 def enhance_image(img: Image.Image) -> Image.Image:
@@ -671,6 +670,7 @@ st.divider()
 # Step 5: Highlights
 # ──────────────────────────────────────────────
 st.header(L("step5"))
+st.caption(L("highlights_min"))
 highlight_cols = st.columns(3)
 highlights = []
 for i in range(3):
@@ -693,6 +693,7 @@ st.divider()
 # Step 6: Menu Information
 # ──────────────────────────────────────────────
 st.header(L("step6"))
+st.caption(L("menu_min"))
 menu_cols = st.columns(3)
 menus = []
 for i in range(3):
@@ -715,6 +716,7 @@ st.divider()
 # Step 7: Interior / Exterior Photos
 # ──────────────────────────────────────────────
 st.header(L("step7"))
+st.caption(L("interior_min"))
 interior_photos = []
 int_cols = st.columns(5)
 for i in range(5):
@@ -735,7 +737,211 @@ st.divider()
 # ──────────────────────────────────────────────
 st.header(L("step8"))
 
-if st.button(L("submit"), type="primary", use_container_width=True):
+# 確認モード・送信フラグの初期化
+if "confirm_mode" not in st.session_state:
+    st.session_state.confirm_mode = False
+if "do_submit" not in st.session_state:
+    st.session_state.do_submit = False
+
+# 編集に戻る
+if st.session_state.confirm_mode and st.button(L("back_edit"), use_container_width=True):
+    st.session_state.confirm_mode = False
+    st.session_state.do_submit = False
+    st.rerun()
+
+# 確認画面表示（confirm_mode かつ do_submit でないとき）
+if st.session_state.confirm_mode and not st.session_state.do_submit:
+    st.subheader(L("confirm_title"))
+    st.info(L("confirm_desc"))
+
+    data = st.session_state.get("_submit_data", {})
+    summary_title = (data.get("store_name", "") or ("Store" if st.session_state.lang == "en" else "店舗"))
+    with st.expander(f"📋 {summary_title} - Summary", expanded=True):
+        st.write("**" + L("store_name") + ":**", data.get("store_name", ""))
+        st.write("**" + L("phone") + ":**", data.get("phone", ""))
+        st.write("**" + L("email") + ":**", data.get("email", ""))
+        st.write("**" + L("business_hours") + ":**", data.get("business_hours", "") or "-")
+        st.write("**" + L("halal_level") + ":**", data.get("halal_level_display", ""))
+        n_hl = sum(1 for h in data.get("highlights", []) if h.get("photo") and h.get("title") and h.get("description"))
+        n_menu = sum(1 for m in data.get("menus", []) if m.get("photo") and m.get("name"))
+        n_int = sum(1 for f in data.get("interior_photos", []) if f)
+        st.write("**" + L("step5") + ":**", n_hl, "sets" if st.session_state.lang == "en" else "セット")
+        st.write("**" + L("step6") + ":**", n_menu, "items" if st.session_state.lang == "en" else "件")
+        st.write("**" + L("step7") + ":**", n_int, "photos" if st.session_state.lang == "en" else "枚")
+
+    if st.button(L("confirm_submit"), type="primary", use_container_width=True):
+        st.session_state.do_submit = True
+        st.rerun()
+
+    st.stop()
+
+# 実際の送信処理（do_submit が True のとき）
+if st.session_state.do_submit:
+    data = st.session_state.get("_submit_data", {})
+    if data:
+        store_name = data["store_name"]
+        phone = data["phone"]
+        contact_name = data["contact_name"]
+        email = data["email"]
+        business_hours = data["business_hours"]
+        regular_holiday = data["regular_holiday"]
+        nearest_station = data["nearest_station"]
+        languages = data["languages"]
+        wifi = data["wifi"]
+        payment_methods = data["payment_methods"]
+        halal_level = data["halal_level"]
+        prep_transparency = data["prep_transparency"]
+        top_photos = data["top_photos"]
+        cert_photos = data["cert_photos"]
+        highlights = data["highlights"]
+        menus = data["menus"]
+        interior_photos = data["interior_photos"]
+
+        # 送信処理（既存ロジック）
+        store_slug = slugify(store_name, allow_unicode=False) or "store"
+        zip_buffer = io.BytesIO()
+        image_manifest = []
+
+        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+            processed_tops = []
+            for i, f in enumerate(top_photos):
+                f.seek(0)
+                img = process_top_photo(f)
+                processed_tops.append(img)
+                fname = f"{store_slug}_top_{i+1}.webp"
+                zf.writestr(f"{store_slug}/images/{fname}", image_to_webp_bytes(img))
+                image_manifest.append({"type": "top", "file": fname})
+
+            thumb = generate_thumbnail(processed_tops)
+            thumb_name = f"{store_slug}_thumb.webp"
+            zf.writestr(f"{store_slug}/images/{thumb_name}", image_to_webp_bytes(thumb))
+            image_manifest.append({"type": "thumbnail", "file": thumb_name})
+
+            for i, f in enumerate(cert_photos):
+                if f:
+                    f.seek(0)
+                    img = process_cert_photo(f)
+                    fname = f"{store_slug}_cert_{i+1}.webp"
+                    zf.writestr(f"{store_slug}/images/{fname}", image_to_webp_bytes(img))
+                    image_manifest.append({"type": "certification", "file": fname})
+
+            commitment_data = []
+            for i, h in enumerate(highlights):
+                if h["photo"] and h["title"].strip() and h["description"].strip():
+                    h["photo"].seek(0)
+                    img = process_highlight_photo(h["photo"])
+                    fname = f"{store_slug}_commitment_{i+1}.webp"
+                    zf.writestr(f"{store_slug}/images/{fname}", image_to_webp_bytes(img))
+                    image_manifest.append({"type": "commitment", "file": fname})
+                    commitment_data.append({
+                        "title": h["title"],
+                        "description": h["description"],
+                        "image": fname,
+                    })
+
+            menu_data = []
+            for i, m in enumerate(menus):
+                if m["photo"] and m["name"].strip():
+                    m["photo"].seek(0)
+                    img = process_menu_photo(m["photo"])
+                    fname = f"{store_slug}_menu_{i+1}.webp"
+                    zf.writestr(f"{store_slug}/images/{fname}", image_to_webp_bytes(img))
+                    image_manifest.append({"type": "menu", "file": fname})
+                    menu_data.append({
+                        "name": m["name"],
+                        "description": m["description"],
+                        "image": fname,
+                    })
+
+            for i, f in enumerate(interior_photos):
+                if f:
+                    f.seek(0)
+                    img = process_interior_photo(f)
+                    fname = f"{store_slug}_interior_{i+1}.webp"
+                    zf.writestr(f"{store_slug}/images/{fname}", image_to_webp_bytes(img))
+                    image_manifest.append({"type": "interior", "file": fname})
+
+            halal_key_map = {
+                L("halal_full"): "fully_halal_certified",
+                L("halal_muslim_friendly"): "muslim_friendly",
+                L("halal_menu"): "halal_menu_available",
+                L("halal_no_pork"): "no_pork_no_alcohol",
+                L("halal_vegan"): "vegan_vegetarian",
+            }
+            prep_key_map = {
+                L("prep_separate_kitchen"): "separate_kitchen",
+                L("prep_separate_utensils"): "separate_utensils",
+                L("prep_dedicated_area"): "dedicated_halal_cooking_area",
+                L("prep_same_kitchen"): "same_kitchen_carefully_managed",
+                L("prep_unknown"): "unknown",
+            }
+            wifi_val = wifi == L("wifi_available")
+
+            data_json = {
+                "store_name": store_name,
+                "phone": phone,
+                "contact_name": contact_name,
+                "email": email,
+                "business_hours": business_hours,
+                "regular_holiday": regular_holiday,
+                "nearest_station": nearest_station,
+                "languages": languages,
+                "wifi": wifi_val,
+                "payment_methods": payment_methods,
+                "halal_level": halal_key_map.get(halal_level, halal_level),
+                "preparation_transparency": prep_key_map.get(prep_transparency, prep_transparency),
+                "commitments": commitment_data,
+                "menus": menu_data,
+                "images": image_manifest,
+                "display_language": st.session_state.lang,
+            }
+            json_bytes = json.dumps(data_json, ensure_ascii=False, indent=2).encode("utf-8")
+            zf.writestr(f"{store_slug}/data.json", json_bytes)
+
+        gs_images = []
+        zip_buffer.seek(0)
+        with zipfile.ZipFile(zip_buffer, "r") as zf_read:
+            for entry in zf_read.namelist():
+                if entry.endswith(".webp"):
+                    img_bytes = zf_read.read(entry)
+                    fname = entry.rsplit("/", 1)[-1]
+                    gs_images.append({
+                        "filename": fname,
+                        "data": base64.b64encode(img_bytes).decode("ascii"),
+                    })
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        submission_dir = os.path.join("submissions", f"{timestamp}_{store_slug}")
+        os.makedirs(os.path.join(submission_dir, "images"), exist_ok=True)
+        zip_buffer.seek(0)
+        with zipfile.ZipFile(zip_buffer, "r") as zf:
+            zf.extractall(submission_dir)
+        zip_buffer.seek(0)
+
+        active_url = webhook_url.strip()
+        if active_url:
+            with st.spinner(L("gs_sending")):
+                try:
+                    gs_resp = send_to_google(active_url, data_json, gs_images)
+                    if gs_resp.get("status") == "success":
+                        st.success(L("gs_success"))
+                        st.balloons()
+                    else:
+                        st.error(L("gs_error").format(
+                            err=gs_resp.get("message", "Unknown error")))
+                except Exception as exc:
+                    st.error(L("gs_error").format(err=str(exc)[:200]))
+        else:
+            st.success(L("gs_success"))
+
+        st.session_state.confirm_mode = False
+        st.session_state.do_submit = False
+        if "_submit_data" in st.session_state:
+            del st.session_state["_submit_data"]
+    st.stop()
+
+# 確認ボタン（通常フロー）
+if st.button(L("confirm_and_submit"), type="primary", use_container_width=True):
     errors = []
 
     if not store_name.strip():
@@ -748,10 +954,19 @@ if st.button(L("submit"), type="primary", use_container_width=True):
     if not all(top_photos):
         errors.append(L("required_top3"))
 
-    for h in highlights:
-        if not h["photo"] or not h["title"].strip() or not h["description"].strip():
-            errors.append(L("required_highlights"))
-            break
+    # Highlights: 最低1セット（写真+タイトル+説明）
+    complete_highlights = [h for h in highlights if h["photo"] and h["title"].strip() and h["description"].strip()]
+    if not complete_highlights:
+        errors.append(L("required_highlights"))
+
+    # Menu: 最低1つ（写真+名前）
+    complete_menus = [m for m in menus if m["photo"] and m["name"].strip()]
+    if not complete_menus:
+        errors.append(L("menu_min"))
+
+    # Interior: 最低1枚
+    if not any(interior_photos):
+        errors.append(L("interior_min"))
 
     if halal_level == L("halal_full"):
         if not any(cert_photos):
@@ -772,6 +987,36 @@ if st.button(L("submit"), type="primary", use_container_width=True):
         for e in errors:
             st.warning(e)
     else:
+        # 確認モードへ：データを保存して確認画面表示
+        halal_key_map = {
+            L("halal_full"): "fully_halal_certified",
+            L("halal_muslim_friendly"): "muslim_friendly",
+            L("halal_menu"): "halal_menu_available",
+            L("halal_no_pork"): "no_pork_no_alcohol",
+            L("halal_vegan"): "vegan_vegetarian",
+        }
+        st.session_state["_submit_data"] = {
+            "store_name": store_name,
+            "phone": phone,
+            "contact_name": contact_name,
+            "email": email,
+            "business_hours": business_hours,
+            "regular_holiday": regular_holiday,
+            "nearest_station": nearest_station,
+            "languages": languages,
+            "wifi": wifi,
+            "payment_methods": payment_methods,
+            "halal_level": halal_level,
+            "halal_level_display": halal_level,
+            "prep_transparency": prep_transparency,
+            "top_photos": top_photos,
+            "cert_photos": cert_photos,
+            "highlights": highlights,
+            "menus": menus,
+            "interior_photos": interior_photos,
+        }
+        st.session_state.confirm_mode = True
+        st.rerun()
         store_slug = slugify(store_name, allow_unicode=False) or "store"
         zip_buffer = io.BytesIO()
         image_manifest = []
