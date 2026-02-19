@@ -91,6 +91,21 @@ LABELS = {
         "access_code_submit": "Enter",
         "access_code_error": "Incorrect access code. Please try again.",
         "access_code_ok": "Access granted.",
+        "draft_section": "Draft",
+        "draft_save": "Save Draft",
+        "draft_load": "Load Draft",
+        "draft_delete": "Delete",
+        "draft_name": "Draft Name",
+        "draft_saved": "Draft saved: {name}",
+        "draft_loaded": "Draft loaded: {name}",
+        "draft_deleted": "Draft deleted: {name}",
+        "draft_none": "(No drafts)",
+        "draft_select": "Select a draft to load",
+        "draft_note": "Photos cannot be saved in drafts. Please re-upload them after loading.",
+        "draft_save_desc": "Save your current text and selections so you can continue later. Enter a name (e.g., store name) and click the button. Your draft will be stored on the server.",
+        "draft_load_desc": "Select a previously saved draft from the list and click \"Load Draft\" to restore your text and selections. You can continue editing from where you left off.",
+        "draft_auto": "Auto-save",
+        "draft_auto_on": "Auto-save is ON",
     },
     "ja": {
         "app_title": "ハラル対応レストラン 店舗情報登録",
@@ -167,6 +182,21 @@ LABELS = {
         "access_code_submit": "入力",
         "access_code_error": "アクセスコードが正しくありません。",
         "access_code_ok": "認証されました。",
+        "draft_section": "下書き",
+        "draft_save": "下書き保存",
+        "draft_load": "下書き読み込み",
+        "draft_delete": "削除",
+        "draft_name": "下書き名",
+        "draft_saved": "下書きを保存しました: {name}",
+        "draft_loaded": "下書きを読み込みました: {name}",
+        "draft_deleted": "下書きを削除しました: {name}",
+        "draft_none": "（下書きなし）",
+        "draft_select": "読み込む下書きを選択",
+        "draft_note": "写真は下書きに保存されません。読み込み後に再度アップロードしてください。",
+        "draft_save_desc": "現在入力中のテキストや選択内容を保存し、後で続きから入力できます。下書き名（例：店舗名）を入力してボタンを押すと、サーバーに保存されます。",
+        "draft_load_desc": "過去に保存した下書きを一覧から選び、「下書き読み込み」ボタンを押すと、テキストや選択内容が復元されます。続きから編集を進められます。",
+        "draft_auto": "自動保存",
+        "draft_auto_on": "自動保存が有効です",
     },
 }
 
@@ -354,6 +384,78 @@ def send_to_google(webhook_url: str, data_json: dict, processed_images: list[dic
 
 
 # ──────────────────────────────────────────────
+# Draft save / load helpers
+# ──────────────────────────────────────────────
+DRAFTS_DIR = Path("drafts")
+
+DRAFT_TEXT_KEYS = [
+    "store_name", "phone", "contact_name", "email",
+    "business_hours", "regular_holiday", "nearest_station",
+    "highlight_title_0", "highlight_title_1", "highlight_title_2",
+    "highlight_desc_0", "highlight_desc_1", "highlight_desc_2",
+    "menu_name_0", "menu_name_1", "menu_name_2",
+    "menu_desc_0", "menu_desc_1", "menu_desc_2",
+]
+DRAFT_MULTI_KEYS = ["languages", "payments"]
+DRAFT_RADIO_KEYS = ["wifi_radio", "halal_level_radio", "prep_transparency_radio"]
+
+
+def _drafts_list() -> list[str]:
+    if not DRAFTS_DIR.exists():
+        return []
+    names = sorted(
+        [f.stem for f in DRAFTS_DIR.glob("*.json")],
+        key=lambda n: DRAFTS_DIR.joinpath(f"{n}.json").stat().st_mtime,
+        reverse=True,
+    )
+    return names
+
+
+def _save_draft(name: str):
+    DRAFTS_DIR.mkdir(parents=True, exist_ok=True)
+    payload: dict = {}
+    for k in DRAFT_TEXT_KEYS:
+        payload[k] = st.session_state.get(k, "")
+    for k in DRAFT_MULTI_KEYS:
+        payload[k] = st.session_state.get(k, [])
+    for k in DRAFT_RADIO_KEYS:
+        payload[k] = st.session_state.get(k, None)
+    payload["lang"] = st.session_state.get("lang", "en")
+    safe_name = slugify(name, allow_unicode=True) or "draft"
+    path = DRAFTS_DIR / f"{safe_name}.json"
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    return safe_name
+
+
+def _load_draft(name: str) -> dict | None:
+    path = DRAFTS_DIR / f"{name}.json"
+    if not path.exists():
+        return None
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _delete_draft(name: str):
+    path = DRAFTS_DIR / f"{name}.json"
+    if path.exists():
+        path.unlink()
+
+
+def _apply_draft(draft: dict):
+    """Write draft values into session_state so widgets pick them up."""
+    for k in DRAFT_TEXT_KEYS:
+        if k in draft:
+            st.session_state[k] = draft[k]
+    for k in DRAFT_MULTI_KEYS:
+        if k in draft:
+            st.session_state[k] = draft[k]
+    for k in DRAFT_RADIO_KEYS:
+        if k in draft:
+            st.session_state[k] = draft[k]
+    if "lang" in draft:
+        st.session_state.lang = draft["lang"]
+
+
+# ──────────────────────────────────────────────
 # Main App
 # ──────────────────────────────────────────────
 st.set_page_config(page_title="Halal Store Registration", layout="wide")
@@ -399,6 +501,63 @@ if access_code_secret and not st.session_state.authenticated:
 
 # Read webhook URL from secrets (invisible to end users)
 webhook_url = get_secret("WEBHOOK_URL", "")
+
+# ──────────────────────────────────────────────
+# Draft management (main area, always visible)
+# ──────────────────────────────────────────────
+with st.expander(f"📋 {L('draft_section')}", expanded=False):
+    # --- 画像の注意（大きく濃く） ---
+    note_text = L("draft_note")
+    st.markdown(
+        f"<div style='font-size:16px; font-weight:bold; color:#b71c1c; "
+        f"margin:12px 0; padding:12px; background:#ffebee; border-radius:8px; "
+        f"border-left:4px solid #b71c1c;'>⚠️ {note_text}</div>",
+        unsafe_allow_html=True,
+    )
+
+    st.markdown("---")
+
+    # --- 下書き保存 ---
+    st.markdown("**" + L("draft_save") + "**")
+    st.caption(L("draft_save_desc"))
+    draft_name_input = st.text_input(
+        L("draft_name"),
+        value=st.session_state.get("store_name", ""),
+        key="draft_name_input",
+    )
+    if st.button(L("draft_save"), use_container_width=True, type="primary"):
+        if draft_name_input.strip():
+            saved = _save_draft(draft_name_input.strip())
+            st.success(L("draft_saved").format(name=saved))
+        else:
+            st.warning(L("required_store"))
+
+    st.divider()
+
+    # --- 下書き読み込み ---
+    st.markdown("**" + L("draft_load") + "**")
+    st.caption(L("draft_load_desc"))
+    drafts = _drafts_list()
+    if drafts:
+        chosen = st.selectbox(L("draft_select"), drafts, key="draft_choice")
+        col_load, col_del = st.columns(2)
+        with col_load:
+            if st.button(L("draft_load"), use_container_width=True):
+                draft = _load_draft(chosen)
+                if draft:
+                    _apply_draft(draft)
+                    st.session_state["_draft_loaded_name"] = chosen
+                    st.rerun()
+        with col_del:
+            if st.button(L("draft_delete"), use_container_width=True):
+                _delete_draft(chosen)
+                st.success(L("draft_deleted").format(name=chosen))
+                st.rerun()
+
+        if st.session_state.pop("_draft_loaded_name", None):
+            st.success(L("draft_loaded").format(name=chosen))
+    else:
+        st.info(L("draft_none"))
 
 # ──────────────────────────────────────────────
 # Progress bar
