@@ -72,7 +72,7 @@ LABELS = {
         "required_cert": "At least 1 certification photo is required for the selected Halal level.",
         "invalid_format": "Invalid image format: {name}. Allowed: jpg, png, webp.",
         "file_too_large": "File too large: {name}. Max 10MB.",
-        "success": "Submission successful! Download your ZIP below.",
+        "success": "Submission complete!!",
         "progress_steps": [
             "Basic Info", "Business Info", "Facilities",
             "Photos", "Highlights", "Menu", "Interior", "Submit"
@@ -82,10 +82,9 @@ LABELS = {
         "interior_n": "Interior/Exterior {n}",
         "top_n": "Top Photo {n}",
         "cert_n": "Certification {n}",
-        "gs_sending": "Sending to Google Sheets & Drive...",
-        "gs_success": "Saved to Google Sheets & Drive!",
-        "gs_success_link": "Drive folder: {url}",
-        "gs_error": "Google Sheets send failed: {err}  (ZIP is still available below)",
+        "gs_sending": "Sending... This may take a minute. Please do not close this page.",
+        "gs_success": "Submission complete!!",
+        "gs_error": "Submission failed: {err}. Please try again.",
         "access_code_title": "Access Code",
         "access_code_prompt": "Please enter the access code to use this form.",
         "access_code_input": "Access Code",
@@ -149,7 +148,7 @@ LABELS = {
         "required_cert": "選択されたハラルレベルでは認証写真が1枚以上必要です。",
         "invalid_format": "無効な画像形式: {name}。jpg, png, webp のみ対応。",
         "file_too_large": "ファイルが大きすぎます: {name}。最大10MB。",
-        "success": "送信が完了しました！下のボタンからZIPをダウンロードできます。",
+        "success": "送信が完了しました！！",
         "progress_steps": [
             "基本情報", "店舗情報", "設備・対応",
             "写真", "こだわり", "メニュー", "内観・外観", "送信"
@@ -159,10 +158,9 @@ LABELS = {
         "interior_n": "内観・外観 {n}",
         "top_n": "TOP写真 {n}",
         "cert_n": "認証写真 {n}",
-        "gs_sending": "Google スプレッドシート & Driveに送信中...",
-        "gs_success": "Google スプレッドシート & Driveに保存しました！",
-        "gs_success_link": "Driveフォルダ: {url}",
-        "gs_error": "Google送信に失敗しました: {err}（ZIPは下からダウンロード可能です）",
+        "gs_sending": "送信中です... 1〜2分かかる場合があります。このページを閉じないでください。",
+        "gs_success": "送信が完了しました！！",
+        "gs_error": "送信に失敗しました: {err}。もう一度お試しください。",
         "access_code_title": "アクセスコード",
         "access_code_prompt": "このフォームを利用するにはアクセスコードを入力してください。",
         "access_code_input": "アクセスコード",
@@ -755,20 +753,11 @@ if st.button(L("submit"), type="primary", use_container_width=True):
                     gs_resp = send_to_google(active_url, data, gs_images)
                     if gs_resp.get("status") == "success":
                         st.success(L("gs_success"))
-                        folder_url = gs_resp.get("folder_url", "")
-                        if folder_url:
-                            st.markdown(L("gs_success_link").format(url=folder_url))
+                        st.balloons()
                     else:
-                        st.warning(L("gs_error").format(
+                        st.error(L("gs_error").format(
                             err=gs_resp.get("message", "Unknown error")))
                 except Exception as exc:
-                    st.warning(L("gs_error").format(err=str(exc)[:200]))
-
-        st.success(L("success"))
-        st.download_button(
-            label=L("download_zip"),
-            data=zip_buffer,
-            file_name=f"{store_slug}.zip",
-            mime="application/zip",
-            use_container_width=True,
-        )
+                    st.error(L("gs_error").format(err=str(exc)[:200]))
+        else:
+            st.success(L("gs_success"))
