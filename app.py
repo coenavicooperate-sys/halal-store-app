@@ -330,6 +330,23 @@ def generate_thumbnail(images_480: list[Image.Image]) -> Image.Image:
     return combined
 
 
+def display_image_with_orientation(uploaded_file):
+    """Display uploaded image with correct EXIF orientation (for mobile photos)."""
+    if not uploaded_file:
+        return
+    try:
+        uploaded_file.seek(0)
+        img = Image.open(uploaded_file)
+        img = fix_exif_rotation(img)
+        if img.mode in ("RGBA", "P"):
+            img = img.convert("RGB")
+        st.image(img, use_container_width=True)
+        uploaded_file.seek(0)
+    except Exception:
+        st.image(uploaded_file, use_container_width=True)
+        uploaded_file.seek(0)
+
+
 def validate_upload(file) -> list[str]:
     errors = []
     if file is None:
@@ -646,7 +663,7 @@ for i in range(3):
         )
         top_photos.append(f)
         if f:
-            st.image(f, use_container_width=True)
+            display_image_with_orientation(f)
 
 st.subheader(L("cert_photos"))
 if halal_level == L("halal_full"):
@@ -662,7 +679,7 @@ for i in range(3):
         )
         cert_photos.append(f)
         if f:
-            st.image(f, use_container_width=True)
+            display_image_with_orientation(f)
 
 st.divider()
 
@@ -682,7 +699,7 @@ for i in range(3):
             key=f"highlight_photo_{i}",
         )
         if h_photo:
-            st.image(h_photo, use_container_width=True)
+            display_image_with_orientation(h_photo)
         h_title = st.text_input(L("highlight_title"), key=f"highlight_title_{i}")
         h_desc = st.text_area(L("highlight_desc"), key=f"highlight_desc_{i}")
         highlights.append({"photo": h_photo, "title": h_title, "description": h_desc})
@@ -705,7 +722,7 @@ for i in range(3):
             key=f"menu_photo_{i}",
         )
         if m_photo:
-            st.image(m_photo, use_container_width=True)
+            display_image_with_orientation(m_photo)
         m_name = st.text_input(L("menu_name"), key=f"menu_name_{i}")
         m_desc = st.text_area(L("menu_desc"), key=f"menu_desc_{i}")
         menus.append({"photo": m_photo, "name": m_name, "description": m_desc})
@@ -728,7 +745,7 @@ for i in range(5):
         )
         interior_photos.append(f)
         if f:
-            st.image(f, use_container_width=True)
+            display_image_with_orientation(f)
 
 st.divider()
 
