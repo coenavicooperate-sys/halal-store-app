@@ -50,8 +50,8 @@ LABELS = {
         "prep_dedicated_area": "Dedicated Halal Cooking Area",
         "prep_same_kitchen": "Same Kitchen (Carefully Managed)",
         "prep_unknown": "Unknown",
-        "top_photos": "Top Photos (Upload 3 images)",
-        "top_photos_desc": "Storefront / Food / Interior",
+        "top_photos": "Top Photos (Storefront / Food / Interior - 3 required)",
+        "top_photos_desc": "",
         "cert_photos": "Certification Photos (Up to 3)",
         "cert_required": "At least 1 certification photo is required for Fully/Partially Halal Certified.",
         "highlight_photo": "Highlight Photo",
@@ -126,8 +126,8 @@ LABELS = {
         "prep_dedicated_area": "ハラル専用調理エリア",
         "prep_same_kitchen": "同一キッチン（慎重に管理）",
         "prep_unknown": "不明",
-        "top_photos": "TOP写真（3枚必須）",
-        "top_photos_desc": "外観 / 料理 / 内観",
+        "top_photos": "TOP写真（外観 / 料理 / 内観の3枚必須）",
+        "top_photos_desc": "",
         "cert_photos": "認証写真（最大3枚）",
         "cert_required": "完全/部分ハラル認証の場合、認証写真が1枚以上必要です。",
         "highlight_photo": "こだわり写真",
@@ -477,7 +477,6 @@ st.divider()
 st.header(L("step4"))
 
 st.subheader(L("top_photos"))
-st.caption(L("top_photos_desc"))
 top_cols = st.columns(3)
 top_photos = []
 for i in range(3):
