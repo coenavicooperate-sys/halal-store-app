@@ -52,6 +52,8 @@ LABELS = {
         "prep_same_kitchen": "Same Kitchen (Carefully Managed)",
         "prep_unknown": "Unknown",
         "top_photos": "Top Photos (Storefront / Food / Interior - 3 required)",
+        "recommended_top": "Recommended size: 480×480px (processed as square)",
+        "recommended_vert": "Recommended size: 540×720px (processed as portrait)",
         "highlights_min": "At least 1 highlight (photo + title + description) required.",
         "menu_min": "At least 1 menu (photo + name) required.",
         "interior_min": "At least 1 interior/exterior photo required.",
@@ -96,7 +98,9 @@ LABELS = {
         "processing_msg": "Processing. Please wait a moment. Do not close this page.",
         "sending_msg": "Sending. This may take 1–2 minutes. Please do not close this page.",
         "before_confirm_msg": "Click the button below to proceed to confirmation. Please wait a moment after clicking.",
+        "after_confirm_click_msg": "Processing. This may take a moment. Please do not close this page.",
         "before_submit_msg": "Click the button below to submit. Sending may take 1–2 minutes. Do not close this page.",
+        "after_submit_click_msg": "Sending. This may take 1–2 minutes. Please do not close this page.",
         "gs_success": "Submission complete!!",
         "gs_error": "Submission failed: {err}. Please try again.",
         "access_code_title": "Access Code",
@@ -157,6 +161,8 @@ LABELS = {
         "prep_same_kitchen": "同一キッチン（慎重に管理）",
         "prep_unknown": "不明",
         "top_photos": "TOP写真（外観 / 料理 / 内観の3枚必須）",
+        "recommended_top": "推奨サイズ: 480×480px（加工後は正方形）",
+        "recommended_vert": "推奨サイズ: 540×720px（加工後は縦型）",
         "highlights_min": "こだわりは最低1セット（写真＋表題＋説明）必要です。",
         "menu_min": "メニューは最低1つ（写真＋メニュー名）必要です。",
         "interior_min": "内観・外観写真は最低1枚必要です。",
@@ -201,7 +207,9 @@ LABELS = {
         "processing_msg": "作業中です。少々お待ちください。このページを閉じないでください。",
         "sending_msg": "送信中です。1〜2分かかる場合があります。このページを閉じないでください。",
         "before_confirm_msg": "下のボタンをクリックすると確認画面に進みます。クリック後、少々お待ちください。",
+        "after_confirm_click_msg": "処理中です。少々お待ちください。このページを閉じないでください。",
         "before_submit_msg": "下のボタンをクリックすると送信が開始されます。1〜2分かかる場合があります。このページを閉じないでください。",
+        "after_submit_click_msg": "送信中です。1〜2分かかる場合があります。このページを閉じないでください。",
         "gs_success": "送信が完了しました！！",
         "gs_error": "送信に失敗しました: {err}。もう一度お試しください。",
         "access_code_title": "アクセスコード",
@@ -556,13 +564,14 @@ if "_submission_result" in st.session_state:
         st.toast(L("gs_success"), icon="✅")
         st.success(L("gs_success"))
         st.balloons()
+        st.info("送信後は修正できません。" if st.session_state.lang == "ja" else "Submitted data cannot be modified.")
     else:
         st.toast(msg or L("gs_error").format(err="Unknown error"), icon="❌")
         st.error(msg if msg else L("gs_error").format(err="Unknown error"))
-    if st.button(L("back_to_form"), type="primary", use_container_width=True):
-        for k in ["_submission_result", "_submission_message"]:
-            st.session_state.pop(k, None)
-        st.rerun()
+        if st.button(L("back_to_form"), type="primary", use_container_width=True):
+            for k in ["_submission_result", "_submission_message"]:
+                st.session_state.pop(k, None)
+            st.rerun()
     st.stop()
 
 # ──────────────────────────────────────────────
@@ -713,6 +722,7 @@ if not st.session_state.get("do_submit", False):
     st.header(L("step4"))
 
     st.subheader(L("top_photos"))
+    st.markdown(f"**📐 {L('recommended_top')}**")
     top_cols = st.columns(3)
     top_photos = []
     for i in range(3):
@@ -727,6 +737,7 @@ if not st.session_state.get("do_submit", False):
                 display_image_with_orientation(f)
 
     st.subheader(L("cert_photos"))
+    st.markdown(f"**📐 {L('recommended_vert')}**")
     if halal_level == L("halal_full"):
         st.info(L("cert_required"))
     cert_photos = []
@@ -749,6 +760,7 @@ if not st.session_state.get("do_submit", False):
     # ──────────────────────────────────────────────
     st.header(L("step5"))
     st.caption(L("highlights_min"))
+    st.markdown(f"**📐 {L('recommended_vert')}**")
     highlight_cols = st.columns(3)
     highlights = []
     for i in range(3):
@@ -772,6 +784,7 @@ if not st.session_state.get("do_submit", False):
     # ──────────────────────────────────────────────
     st.header(L("step6"))
     st.caption(L("menu_min"))
+    st.markdown(f"**📐 {L('recommended_vert')}**")
     menu_cols = st.columns(3)
     menus = []
     for i in range(3):
@@ -795,6 +808,7 @@ if not st.session_state.get("do_submit", False):
     # ──────────────────────────────────────────────
     st.header(L("step7"))
     st.caption(L("interior_min"))
+    st.markdown(f"**📐 {L('recommended_vert')}**")
     interior_photos = []
     int_cols = st.columns(5)
     for i in range(5):
@@ -849,9 +863,22 @@ if st.session_state.confirm_mode and not st.session_state.do_submit:
         st.write("**" + L("step7") + ":**", n_int, "photos" if st.session_state.lang == "en" else "枚")
 
     st.info("⏳ " + L("before_submit_msg"))
-    if st.button(L("confirm_submit"), type="primary", use_container_width=True):
+    submit_clicked = st.button(L("confirm_submit"), type="primary", use_container_width=True)
+    if submit_clicked:
+        st.markdown(
+            f"<div style='font-size:16px; font-weight:bold; color:#b71c1c; margin-top:12px; padding:14px; "
+            f"background:#ffebee; border-radius:8px; border-left:6px solid #b71c1c;'>"
+            f"⚠️ {L('after_submit_click_msg')}</div>",
+            unsafe_allow_html=True,
+        )
         st.session_state.do_submit = True
         st.rerun()
+    st.markdown(
+        f"<div style='font-size:16px; font-weight:bold; color:#b71c1c; margin-top:12px; padding:14px; "
+        f"background:#ffebee; border-radius:8px; border-left:6px solid #b71c1c;'>"
+        f"⚠️ {L('after_submit_click_msg')}</div>",
+        unsafe_allow_html=True,
+    )
 
     st.stop()
 
@@ -1026,7 +1053,14 @@ if st.session_state.do_submit:
 
 # 確認前メッセージ & 確認ボタン（通常フロー）
 st.info("📋 " + L("before_confirm_msg"))
-if st.button(L("confirm_and_submit"), type="primary", use_container_width=True):
+confirm_clicked = st.button(L("confirm_and_submit"), type="primary", use_container_width=True)
+if confirm_clicked:
+    st.markdown(
+        f"<div style='font-size:14px; color:#1565c0; margin-top:8px; padding:10px; "
+        f"background:#e3f2fd; border-radius:6px; border-left:4px solid #1565c0;'>"
+        f"⏳ {L('after_confirm_click_msg')}</div>",
+        unsafe_allow_html=True,
+    )
     errors = []
 
     if not store_name.strip():
