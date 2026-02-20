@@ -91,6 +91,8 @@ LABELS = {
         "top_n": "Top Photo {n}",
         "cert_n": "Certification {n}",
         "gs_sending": "Sending... This may take a minute. Please do not close this page.",
+        "processing_msg": "Processing. Please wait a moment. Do not close this page.",
+        "sending_msg": "Sending. This may take 1–2 minutes. Please do not close this page.",
         "gs_success": "Submission complete!!",
         "gs_error": "Submission failed: {err}. Please try again.",
         "access_code_title": "Access Code",
@@ -190,6 +192,8 @@ LABELS = {
         "top_n": "TOP写真 {n}",
         "cert_n": "認証写真 {n}",
         "gs_sending": "送信中です... 1〜2分かかる場合があります。このページを閉じないでください。",
+        "processing_msg": "作業中です。少々お待ちください。このページを閉じないでください。",
+        "sending_msg": "送信中です。1〜2分かかる場合があります。このページを閉じないでください。",
         "gs_success": "送信が完了しました！！",
         "gs_error": "送信に失敗しました: {err}。もう一度お試しください。",
         "access_code_title": "アクセスコード",
@@ -290,11 +294,8 @@ def process_top_photo(uploaded_file) -> Image.Image:
 def process_cert_photo(uploaded_file) -> Image.Image:
     img = Image.open(uploaded_file)
     img = process_image_common(img)
-    max_side = 1600
-    w, h = img.size
-    if max(w, h) > max_side:
-        ratio = max_side / max(w, h)
-        img = img.resize((int(w * ratio), int(h * ratio)), Image.LANCZOS)
+    img = center_crop_to_ratio(img, 540, 720)
+    img = img.resize((540, 720), Image.LANCZOS)
     return img
 
 
@@ -796,148 +797,148 @@ if st.session_state.confirm_mode and not st.session_state.do_submit:
 if st.session_state.do_submit:
     data = st.session_state.get("_submit_data", {})
     if data:
-        store_name = data["store_name"]
-        phone = data["phone"]
-        contact_name = data["contact_name"]
-        email = data["email"]
-        business_hours = data["business_hours"]
-        regular_holiday = data["regular_holiday"]
-        nearest_station = data["nearest_station"]
-        languages = data["languages"]
-        wifi = data["wifi"]
-        payment_methods = data["payment_methods"]
-        halal_level = data["halal_level"]
-        prep_transparency = data["prep_transparency"]
-        top_photos = data["top_photos"]
-        cert_photos = data["cert_photos"]
-        highlights = data["highlights"]
-        menus = data["menus"]
-        interior_photos = data["interior_photos"]
+        with st.spinner(L("sending_msg")):
+            store_name = data["store_name"]
+            phone = data["phone"]
+            contact_name = data["contact_name"]
+            email = data["email"]
+            business_hours = data["business_hours"]
+            regular_holiday = data["regular_holiday"]
+            nearest_station = data["nearest_station"]
+            languages = data["languages"]
+            wifi = data["wifi"]
+            payment_methods = data["payment_methods"]
+            halal_level = data["halal_level"]
+            prep_transparency = data["prep_transparency"]
+            top_photos = data["top_photos"]
+            cert_photos = data["cert_photos"]
+            highlights = data["highlights"]
+            menus = data["menus"]
+            interior_photos = data["interior_photos"]
 
-        # 送信処理（既存ロジック）
-        store_slug = slugify(store_name, allow_unicode=False) or "store"
-        zip_buffer = io.BytesIO()
-        image_manifest = []
+            # 送信処理（既存ロジック）
+            store_slug = slugify(store_name, allow_unicode=False) or "store"
+            zip_buffer = io.BytesIO()
+            image_manifest = []
 
-        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
-            processed_tops = []
-            for i, f in enumerate(top_photos):
-                f.seek(0)
-                img = process_top_photo(f)
-                processed_tops.append(img)
-                fname = f"{store_slug}_top_{i+1}.webp"
-                zf.writestr(f"{store_slug}/images/{fname}", image_to_webp_bytes(img))
-                image_manifest.append({"type": "top", "file": fname})
-
-            thumb = generate_thumbnail(processed_tops)
-            thumb_name = f"{store_slug}_thumb.webp"
-            zf.writestr(f"{store_slug}/images/{thumb_name}", image_to_webp_bytes(thumb))
-            image_manifest.append({"type": "thumbnail", "file": thumb_name})
-
-            for i, f in enumerate(cert_photos):
-                if f:
+            with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+                processed_tops = []
+                for i, f in enumerate(top_photos):
                     f.seek(0)
-                    img = process_cert_photo(f)
-                    fname = f"{store_slug}_cert_{i+1}.webp"
+                    img = process_top_photo(f)
+                    processed_tops.append(img)
+                    fname = f"{store_slug}_top_{i+1}.webp"
                     zf.writestr(f"{store_slug}/images/{fname}", image_to_webp_bytes(img))
-                    image_manifest.append({"type": "certification", "file": fname})
+                    image_manifest.append({"type": "top", "file": fname})
 
-            commitment_data = []
-            for i, h in enumerate(highlights):
-                if h["photo"] and h["title"].strip() and h["description"].strip():
-                    h["photo"].seek(0)
-                    img = process_highlight_photo(h["photo"])
-                    fname = f"{store_slug}_commitment_{i+1}.webp"
-                    zf.writestr(f"{store_slug}/images/{fname}", image_to_webp_bytes(img))
-                    image_manifest.append({"type": "commitment", "file": fname})
-                    commitment_data.append({
-                        "title": h["title"],
-                        "description": h["description"],
-                        "image": fname,
-                    })
+                thumb = generate_thumbnail(processed_tops)
+                thumb_name = f"{store_slug}_thumb.webp"
+                zf.writestr(f"{store_slug}/images/{thumb_name}", image_to_webp_bytes(thumb))
+                image_manifest.append({"type": "thumbnail", "file": thumb_name})
 
-            menu_data = []
-            for i, m in enumerate(menus):
-                if m["photo"] and m["name"].strip():
-                    m["photo"].seek(0)
-                    img = process_menu_photo(m["photo"])
-                    fname = f"{store_slug}_menu_{i+1}.webp"
-                    zf.writestr(f"{store_slug}/images/{fname}", image_to_webp_bytes(img))
-                    image_manifest.append({"type": "menu", "file": fname})
-                    menu_data.append({
-                        "name": m["name"],
-                        "description": m["description"],
-                        "image": fname,
-                    })
+                for i, f in enumerate(cert_photos):
+                    if f:
+                        f.seek(0)
+                        img = process_cert_photo(f)
+                        fname = f"{store_slug}_cert_{i+1}.webp"
+                        zf.writestr(f"{store_slug}/images/{fname}", image_to_webp_bytes(img))
+                        image_manifest.append({"type": "certification", "file": fname})
 
-            for i, f in enumerate(interior_photos):
-                if f:
-                    f.seek(0)
-                    img = process_interior_photo(f)
-                    fname = f"{store_slug}_interior_{i+1}.webp"
-                    zf.writestr(f"{store_slug}/images/{fname}", image_to_webp_bytes(img))
-                    image_manifest.append({"type": "interior", "file": fname})
+                commitment_data = []
+                for i, h in enumerate(highlights):
+                    if h["photo"] and h["title"].strip() and h["description"].strip():
+                        h["photo"].seek(0)
+                        img = process_highlight_photo(h["photo"])
+                        fname = f"{store_slug}_commitment_{i+1}.webp"
+                        zf.writestr(f"{store_slug}/images/{fname}", image_to_webp_bytes(img))
+                        image_manifest.append({"type": "commitment", "file": fname})
+                        commitment_data.append({
+                            "title": h["title"],
+                            "description": h["description"],
+                            "image": fname,
+                        })
 
-            halal_key_map = {
-                L("halal_full"): "fully_halal_certified",
-                L("halal_muslim_friendly"): "muslim_friendly",
-                L("halal_menu"): "halal_menu_available",
-                L("halal_no_pork"): "no_pork_no_alcohol",
-                L("halal_vegan"): "vegan_vegetarian",
-            }
-            prep_key_map = {
-                L("prep_separate_kitchen"): "separate_kitchen",
-                L("prep_separate_utensils"): "separate_utensils",
-                L("prep_dedicated_area"): "dedicated_halal_cooking_area",
-                L("prep_same_kitchen"): "same_kitchen_carefully_managed",
-                L("prep_unknown"): "unknown",
-            }
-            wifi_val = wifi == L("wifi_available")
+                menu_data = []
+                for i, m in enumerate(menus):
+                    if m["photo"] and m["name"].strip():
+                        m["photo"].seek(0)
+                        img = process_menu_photo(m["photo"])
+                        fname = f"{store_slug}_menu_{i+1}.webp"
+                        zf.writestr(f"{store_slug}/images/{fname}", image_to_webp_bytes(img))
+                        image_manifest.append({"type": "menu", "file": fname})
+                        menu_data.append({
+                            "name": m["name"],
+                            "description": m["description"],
+                            "image": fname,
+                        })
 
-            data_json = {
-                "store_name": store_name,
-                "phone": phone,
-                "contact_name": contact_name,
-                "email": email,
-                "business_hours": business_hours,
-                "regular_holiday": regular_holiday,
-                "nearest_station": nearest_station,
-                "languages": languages,
-                "wifi": wifi_val,
-                "payment_methods": payment_methods,
-                "halal_level": halal_key_map.get(halal_level, halal_level),
-                "preparation_transparency": prep_key_map.get(prep_transparency, prep_transparency),
-                "commitments": commitment_data,
-                "menus": menu_data,
-                "images": image_manifest,
-                "display_language": st.session_state.lang,
-            }
-            json_bytes = json.dumps(data_json, ensure_ascii=False, indent=2).encode("utf-8")
-            zf.writestr(f"{store_slug}/data.json", json_bytes)
+                for i, f in enumerate(interior_photos):
+                    if f:
+                        f.seek(0)
+                        img = process_interior_photo(f)
+                        fname = f"{store_slug}_interior_{i+1}.webp"
+                        zf.writestr(f"{store_slug}/images/{fname}", image_to_webp_bytes(img))
+                        image_manifest.append({"type": "interior", "file": fname})
 
-        gs_images = []
-        zip_buffer.seek(0)
-        with zipfile.ZipFile(zip_buffer, "r") as zf_read:
-            for entry in zf_read.namelist():
-                if entry.endswith(".webp"):
-                    img_bytes = zf_read.read(entry)
-                    fname = entry.rsplit("/", 1)[-1]
-                    gs_images.append({
-                        "filename": fname,
-                        "data": base64.b64encode(img_bytes).decode("ascii"),
-                    })
+                halal_key_map = {
+                    L("halal_full"): "fully_halal_certified",
+                    L("halal_muslim_friendly"): "muslim_friendly",
+                    L("halal_menu"): "halal_menu_available",
+                    L("halal_no_pork"): "no_pork_no_alcohol",
+                    L("halal_vegan"): "vegan_vegetarian",
+                }
+                prep_key_map = {
+                    L("prep_separate_kitchen"): "separate_kitchen",
+                    L("prep_separate_utensils"): "separate_utensils",
+                    L("prep_dedicated_area"): "dedicated_halal_cooking_area",
+                    L("prep_same_kitchen"): "same_kitchen_carefully_managed",
+                    L("prep_unknown"): "unknown",
+                }
+                wifi_val = wifi == L("wifi_available")
 
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        submission_dir = os.path.join("submissions", f"{timestamp}_{store_slug}")
-        os.makedirs(os.path.join(submission_dir, "images"), exist_ok=True)
-        zip_buffer.seek(0)
-        with zipfile.ZipFile(zip_buffer, "r") as zf:
-            zf.extractall(submission_dir)
-        zip_buffer.seek(0)
+                data_json = {
+                    "store_name": store_name,
+                    "phone": phone,
+                    "contact_name": contact_name,
+                    "email": email,
+                    "business_hours": business_hours,
+                    "regular_holiday": regular_holiday,
+                    "nearest_station": nearest_station,
+                    "languages": languages,
+                    "wifi": wifi_val,
+                    "payment_methods": payment_methods,
+                    "halal_level": halal_key_map.get(halal_level, halal_level),
+                    "preparation_transparency": prep_key_map.get(prep_transparency, prep_transparency),
+                    "commitments": commitment_data,
+                    "menus": menu_data,
+                    "images": image_manifest,
+                    "display_language": st.session_state.lang,
+                }
+                json_bytes = json.dumps(data_json, ensure_ascii=False, indent=2).encode("utf-8")
+                zf.writestr(f"{store_slug}/data.json", json_bytes)
 
-        active_url = webhook_url.strip()
-        if active_url:
-            with st.spinner(L("gs_sending")):
+            gs_images = []
+            zip_buffer.seek(0)
+            with zipfile.ZipFile(zip_buffer, "r") as zf_read:
+                for entry in zf_read.namelist():
+                    if entry.endswith(".webp"):
+                        img_bytes = zf_read.read(entry)
+                        fname = entry.rsplit("/", 1)[-1]
+                        gs_images.append({
+                            "filename": fname,
+                            "data": base64.b64encode(img_bytes).decode("ascii"),
+                        })
+
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            submission_dir = os.path.join("submissions", f"{timestamp}_{store_slug}")
+            os.makedirs(os.path.join(submission_dir, "images"), exist_ok=True)
+            zip_buffer.seek(0)
+            with zipfile.ZipFile(zip_buffer, "r") as zf:
+                zf.extractall(submission_dir)
+            zip_buffer.seek(0)
+
+            active_url = webhook_url.strip()
+            if active_url:
                 try:
                     gs_resp = send_to_google(active_url, data_json, gs_images)
                     if gs_resp.get("status") == "success":
@@ -948,8 +949,8 @@ if st.session_state.do_submit:
                             err=gs_resp.get("message", "Unknown error")))
                 except Exception as exc:
                     st.error(L("gs_error").format(err=str(exc)[:200]))
-        else:
-            st.success(L("gs_success"))
+            else:
+                st.success(L("gs_success"))
 
         st.session_state.confirm_mode = False
         st.session_state.do_submit = False
@@ -1005,122 +1006,8 @@ if st.button(L("confirm_and_submit"), type="primary", use_container_width=True):
             st.warning(e)
     else:
         # 確認モードへ：データを保存して確認画面表示
-        halal_key_map = {
-            L("halal_full"): "fully_halal_certified",
-            L("halal_muslim_friendly"): "muslim_friendly",
-            L("halal_menu"): "halal_menu_available",
-            L("halal_no_pork"): "no_pork_no_alcohol",
-            L("halal_vegan"): "vegan_vegetarian",
-        }
-        st.session_state["_submit_data"] = {
-            "store_name": store_name,
-            "phone": phone,
-            "contact_name": contact_name,
-            "email": email,
-            "business_hours": business_hours,
-            "regular_holiday": regular_holiday,
-            "nearest_station": nearest_station,
-            "languages": languages,
-            "wifi": wifi,
-            "payment_methods": payment_methods,
-            "halal_level": halal_level,
-            "halal_level_display": halal_level,
-            "prep_transparency": prep_transparency,
-            "top_photos": top_photos,
-            "cert_photos": cert_photos,
-            "highlights": highlights,
-            "menus": menus,
-            "interior_photos": interior_photos,
-        }
-        st.session_state.confirm_mode = True
-        st.rerun()
-        store_slug = slugify(store_name, allow_unicode=False) or "store"
-        zip_buffer = io.BytesIO()
-        image_manifest = []
-
-        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
-            # --- TOP photos ---
-            processed_tops = []
-            for i, f in enumerate(top_photos):
-                f.seek(0)
-                img = process_top_photo(f)
-                processed_tops.append(img)
-                fname = f"{store_slug}_top_{i+1}.webp"
-                zf.writestr(f"{store_slug}/images/{fname}", image_to_webp_bytes(img))
-                image_manifest.append({"type": "top", "file": fname})
-
-            # Thumbnail
-            thumb = generate_thumbnail(processed_tops)
-            thumb_name = f"{store_slug}_thumb.webp"
-            zf.writestr(f"{store_slug}/images/{thumb_name}", image_to_webp_bytes(thumb))
-            image_manifest.append({"type": "thumbnail", "file": thumb_name})
-
-            # --- Certification photos ---
-            for i, f in enumerate(cert_photos):
-                if f:
-                    f.seek(0)
-                    img = process_cert_photo(f)
-                    fname = f"{store_slug}_cert_{i+1}.webp"
-                    zf.writestr(f"{store_slug}/images/{fname}", image_to_webp_bytes(img))
-                    image_manifest.append({"type": "certification", "file": fname})
-
-            # --- Highlights ---
-            commitment_data = []
-            for i, h in enumerate(highlights):
-                h["photo"].seek(0)
-                img = process_highlight_photo(h["photo"])
-                fname = f"{store_slug}_commitment_{i+1}.webp"
-                zf.writestr(f"{store_slug}/images/{fname}", image_to_webp_bytes(img))
-                image_manifest.append({"type": "commitment", "file": fname})
-                commitment_data.append({
-                    "title": h["title"],
-                    "description": h["description"],
-                    "image": fname,
-                })
-
-            # --- Menus ---
-            menu_data = []
-            for i, m in enumerate(menus):
-                if m["photo"] and m["name"].strip():
-                    m["photo"].seek(0)
-                    img = process_menu_photo(m["photo"])
-                    fname = f"{store_slug}_menu_{i+1}.webp"
-                    zf.writestr(f"{store_slug}/images/{fname}", image_to_webp_bytes(img))
-                    image_manifest.append({"type": "menu", "file": fname})
-                    menu_data.append({
-                        "name": m["name"],
-                        "description": m["description"],
-                        "image": fname,
-                    })
-
-            # --- Interior photos ---
-            for i, f in enumerate(interior_photos):
-                if f:
-                    f.seek(0)
-                    img = process_interior_photo(f)
-                    fname = f"{store_slug}_interior_{i+1}.webp"
-                    zf.writestr(f"{store_slug}/images/{fname}", image_to_webp_bytes(img))
-                    image_manifest.append({"type": "interior", "file": fname})
-
-            # --- Halal level key mapping ---
-            halal_key_map = {
-                L("halal_full"): "fully_halal_certified",
-                L("halal_muslim_friendly"): "muslim_friendly",
-                L("halal_menu"): "halal_menu_available",
-                L("halal_no_pork"): "no_pork_no_alcohol",
-                L("halal_vegan"): "vegan_vegetarian",
-            }
-            prep_key_map = {
-                L("prep_separate_kitchen"): "separate_kitchen",
-                L("prep_separate_utensils"): "separate_utensils",
-                L("prep_dedicated_area"): "dedicated_halal_cooking_area",
-                L("prep_same_kitchen"): "same_kitchen_carefully_managed",
-                L("prep_unknown"): "unknown",
-            }
-            wifi_val = wifi == L("wifi_available")
-
-            # --- data.json ---
-            data = {
+        with st.spinner(L("processing_msg")):
+            st.session_state["_submit_data"] = {
                 "store_name": store_name,
                 "phone": phone,
                 "contact_name": contact_name,
@@ -1129,55 +1016,16 @@ if st.button(L("confirm_and_submit"), type="primary", use_container_width=True):
                 "regular_holiday": regular_holiday,
                 "nearest_station": nearest_station,
                 "languages": languages,
-                "wifi": wifi_val,
+                "wifi": wifi,
                 "payment_methods": payment_methods,
-                "halal_level": halal_key_map.get(halal_level, halal_level),
-                "preparation_transparency": prep_key_map.get(prep_transparency, prep_transparency),
-                "commitments": commitment_data,
-                "menus": menu_data,
-                "images": image_manifest,
-                "display_language": st.session_state.lang,
+                "halal_level": halal_level,
+                "halal_level_display": halal_level,
+                "prep_transparency": prep_transparency,
+                "top_photos": top_photos,
+                "cert_photos": cert_photos,
+                "highlights": highlights,
+                "menus": menus,
+                "interior_photos": interior_photos,
             }
-            json_bytes = json.dumps(data, ensure_ascii=False, indent=2).encode("utf-8")
-            zf.writestr(f"{store_slug}/data.json", json_bytes)
-
-        # Collect processed images as base64 for Google upload
-        gs_images = []
-        zip_buffer.seek(0)
-        with zipfile.ZipFile(zip_buffer, "r") as zf_read:
-            for entry in zf_read.namelist():
-                if entry.endswith(".webp"):
-                    img_bytes = zf_read.read(entry)
-                    fname = entry.rsplit("/", 1)[-1]
-                    gs_images.append({
-                        "filename": fname,
-                        "data": base64.b64encode(img_bytes).decode("ascii"),
-                    })
-
-        # Save to submissions/ folder
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        submission_dir = os.path.join("submissions", f"{timestamp}_{store_slug}")
-        os.makedirs(os.path.join(submission_dir, "images"), exist_ok=True)
-
-        zip_buffer.seek(0)
-        with zipfile.ZipFile(zip_buffer, "r") as zf:
-            zf.extractall(submission_dir)
-
-        zip_buffer.seek(0)
-
-        # --- Send to Google Sheets & Drive ---
-        active_url = webhook_url.strip()
-        if active_url:
-            with st.spinner(L("gs_sending")):
-                try:
-                    gs_resp = send_to_google(active_url, data, gs_images)
-                    if gs_resp.get("status") == "success":
-                        st.success(L("gs_success"))
-                        st.balloons()
-                    else:
-                        st.error(L("gs_error").format(
-                            err=gs_resp.get("message", "Unknown error")))
-                except Exception as exc:
-                    st.error(L("gs_error").format(err=str(exc)[:200]))
-        else:
-            st.success(L("gs_success"))
+            st.session_state.confirm_mode = True
+            st.rerun()
