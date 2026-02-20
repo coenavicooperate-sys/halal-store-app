@@ -71,6 +71,7 @@ LABELS = {
         "confirm_submit": "Submit",
         "back_edit": "Back to Edit",
         "confirm_and_submit": "Confirm & Submit",
+        "back_to_form": "Back to Form",
         "download_zip": "Download ZIP",
         "validation_error": "Please fix the following errors:",
         "required_store": "Store Name is required.",
@@ -94,6 +95,8 @@ LABELS = {
         "gs_sending": "Sending... This may take a minute. Please do not close this page.",
         "processing_msg": "Processing. Please wait a moment. Do not close this page.",
         "sending_msg": "Sending. This may take 1–2 minutes. Please do not close this page.",
+        "before_confirm_msg": "Click the button below to proceed to confirmation. Please wait a moment after clicking.",
+        "before_submit_msg": "Click the button below to submit. Sending may take 1–2 minutes. Do not close this page.",
         "gs_success": "Submission complete!!",
         "gs_error": "Submission failed: {err}. Please try again.",
         "access_code_title": "Access Code",
@@ -173,6 +176,7 @@ LABELS = {
         "confirm_submit": "送信する",
         "back_edit": "編集に戻る",
         "confirm_and_submit": "確認して送信",
+        "back_to_form": "フォームに戻る",
         "download_zip": "ZIPダウンロード",
         "validation_error": "以下のエラーを修正してください：",
         "required_store": "店舗名は必須です。",
@@ -196,6 +200,8 @@ LABELS = {
         "gs_sending": "送信中です... 1〜2分かかる場合があります。このページを閉じないでください。",
         "processing_msg": "作業中です。少々お待ちください。このページを閉じないでください。",
         "sending_msg": "送信中です。1〜2分かかる場合があります。このページを閉じないでください。",
+        "before_confirm_msg": "下のボタンをクリックすると確認画面に進みます。クリック後、少々お待ちください。",
+        "before_submit_msg": "下のボタンをクリックすると送信が開始されます。1〜2分かかる場合があります。このページを閉じないでください。",
         "gs_success": "送信が完了しました！！",
         "gs_error": "送信に失敗しました: {err}。もう一度お試しください。",
         "access_code_title": "アクセスコード",
@@ -541,240 +547,268 @@ if access_code_secret and not st.session_state.authenticated:
 webhook_url = get_secret("WEBHOOK_URL", "")
 
 # ──────────────────────────────────────────────
-# Draft management (main area, always visible)
+# 送信結果表示（スマホで見やすいようページ上部に表示）
 # ──────────────────────────────────────────────
-with st.expander(f"📋 {L('draft_section')}", expanded=False):
-    # --- 画像の注意（大きく濃く） ---
-    note_text = L("draft_note")
-    st.markdown(
-        f"<div style='font-size:16px; font-weight:bold; color:#b71c1c; "
-        f"margin:12px 0; padding:12px; background:#ffebee; border-radius:8px; "
-        f"border-left:4px solid #b71c1c;'>⚠️ {note_text}</div>",
-        unsafe_allow_html=True,
-    )
+if "_submission_result" in st.session_state:
+    result = st.session_state["_submission_result"]
+    msg = st.session_state.get("_submission_message", "")
+    if result == "success":
+        st.toast(L("gs_success"), icon="✅")
+        st.success(L("gs_success"))
+        st.balloons()
+    else:
+        st.toast(msg or L("gs_error").format(err="Unknown error"), icon="❌")
+        st.error(msg if msg else L("gs_error").format(err="Unknown error"))
+    if st.button(L("back_to_form"), type="primary", use_container_width=True):
+        for k in ["_submission_result", "_submission_message"]:
+            st.session_state.pop(k, None)
+        st.rerun()
+    st.stop()
 
-    st.markdown("---")
+# ──────────────────────────────────────────────
+# 送信処理中は画面上部にメッセージを表示し、フォームをスキップ
+# ──────────────────────────────────────────────
+if st.session_state.get("do_submit", False):
+    st.info("⏳ " + L("sending_msg"))
+    st.caption("Please wait..." if st.session_state.lang == "en" else "少々お待ちください...")
+    st.divider()
 
-    # --- 下書き保存 ---
-    st.markdown("**" + L("draft_save") + "**")
-    st.caption(L("draft_save_desc"))
-    draft_name_input = st.text_input(
-        L("draft_name"),
-        value=st.session_state.get("store_name", ""),
-        key="draft_name_input",
-    )
-    if st.button(L("draft_save"), use_container_width=True, type="primary"):
-        if draft_name_input.strip():
-            saved = _save_draft(draft_name_input.strip())
-            st.success(L("draft_saved").format(name=saved))
+if not st.session_state.get("do_submit", False):
+    # ──────────────────────────────────────────────
+    # Draft management (main area, always visible)
+    # ──────────────────────────────────────────────
+    with st.expander(f"📋 {L('draft_section')}", expanded=False):
+        # --- 画像の注意（大きく濃く） ---
+        note_text = L("draft_note")
+        st.markdown(
+            f"<div style='font-size:16px; font-weight:bold; color:#b71c1c; "
+            f"margin:12px 0; padding:12px; background:#ffebee; border-radius:8px; "
+            f"border-left:4px solid #b71c1c;'>⚠️ {note_text}</div>",
+            unsafe_allow_html=True,
+        )
+
+        st.markdown("---")
+
+        # --- 下書き保存 ---
+        st.markdown("**" + L("draft_save") + "**")
+        st.caption(L("draft_save_desc"))
+        draft_name_input = st.text_input(
+            L("draft_name"),
+            value=st.session_state.get("store_name", ""),
+            key="draft_name_input",
+        )
+        if st.button(L("draft_save"), use_container_width=True, type="primary"):
+            if draft_name_input.strip():
+                saved = _save_draft(draft_name_input.strip())
+                st.success(L("draft_saved").format(name=saved))
+            else:
+                st.warning(L("required_store"))
+
+        st.divider()
+
+        # --- 下書き読み込み ---
+        st.markdown("**" + L("draft_load") + "**")
+        st.caption(L("draft_load_desc"))
+        drafts = _drafts_list()
+        if drafts:
+            chosen = st.selectbox(L("draft_select"), drafts, key="draft_choice")
+            col_load, col_del = st.columns(2)
+            with col_load:
+                if st.button(L("draft_load"), use_container_width=True):
+                    draft = _load_draft(chosen)
+                    if draft:
+                        _apply_draft(draft)
+                        st.session_state["_draft_loaded_name"] = chosen
+                        st.rerun()
+            with col_del:
+                if st.button(L("draft_delete"), use_container_width=True):
+                    _delete_draft(chosen)
+                    st.success(L("draft_deleted").format(name=chosen))
+                    st.rerun()
+
+            if st.session_state.pop("_draft_loaded_name", None):
+                st.success(L("draft_loaded").format(name=chosen))
         else:
-            st.warning(L("required_store"))
+            st.info(L("draft_none"))
+
+    # ──────────────────────────────────────────────
+    # Progress bar
+    # ──────────────────────────────────────────────
+    steps = L("progress_steps")
+    progress_html = "<div style='display:flex;gap:4px;margin-bottom:24px;'>"
+    for i, step_label in enumerate(steps):
+        color = "#1f77b4" if i == 0 else "#ddd"
+        progress_html += (
+            f"<div style='flex:1;text-align:center;padding:8px 4px;"
+            f"background:{color};color:{'#fff' if i == 0 else '#333'};"
+            f"border-radius:6px;font-size:13px;font-weight:600;'>"
+            f"Step {i+1}<br><span style='font-weight:400;font-size:11px;'>{step_label}</span></div>"
+        )
+    progress_html += "</div>"
+    st.markdown(progress_html, unsafe_allow_html=True)
+
+    # ──────────────────────────────────────────────
+    # Step 1: Basic Information
+    # ──────────────────────────────────────────────
+    st.header(L("step1"))
+    store_name = st.text_input(L("store_name"), key="store_name")
+    phone = st.text_input(L("phone"), key="phone")
+    category = st.selectbox(
+        L("category"),
+        options=CATEGORY_OPTIONS,
+        key="category",
+    )
+    contact_name = st.text_input(L("contact"), key="contact_name")
+    email = st.text_input(L("email"), key="email")
 
     st.divider()
 
-    # --- 下書き読み込み ---
-    st.markdown("**" + L("draft_load") + "**")
-    st.caption(L("draft_load_desc"))
-    drafts = _drafts_list()
-    if drafts:
-        chosen = st.selectbox(L("draft_select"), drafts, key="draft_choice")
-        col_load, col_del = st.columns(2)
-        with col_load:
-            if st.button(L("draft_load"), use_container_width=True):
-                draft = _load_draft(chosen)
-                if draft:
-                    _apply_draft(draft)
-                    st.session_state["_draft_loaded_name"] = chosen
-                    st.rerun()
-        with col_del:
-            if st.button(L("draft_delete"), use_container_width=True):
-                _delete_draft(chosen)
-                st.success(L("draft_deleted").format(name=chosen))
-                st.rerun()
+    # ──────────────────────────────────────────────
+    # Step 2: Business Information
+    # ──────────────────────────────────────────────
+    st.header(L("step2"))
+    business_hours = st.text_area(L("business_hours"), key="business_hours")
+    regular_holiday = st.text_input(L("regular_holiday"), key="regular_holiday")
+    nearest_station = st.text_input(L("nearest_station"), key="nearest_station")
 
-        if st.session_state.pop("_draft_loaded_name", None):
-            st.success(L("draft_loaded").format(name=chosen))
-    else:
-        st.info(L("draft_none"))
+    st.divider()
 
-# ──────────────────────────────────────────────
-# Progress bar
-# ──────────────────────────────────────────────
-steps = L("progress_steps")
-progress_html = "<div style='display:flex;gap:4px;margin-bottom:24px;'>"
-for i, step_label in enumerate(steps):
-    color = "#1f77b4" if i == 0 else "#ddd"
-    progress_html += (
-        f"<div style='flex:1;text-align:center;padding:8px 4px;"
-        f"background:{color};color:{'#fff' if i == 0 else '#333'};"
-        f"border-radius:6px;font-size:13px;font-weight:600;'>"
-        f"Step {i+1}<br><span style='font-weight:400;font-size:11px;'>{step_label}</span></div>"
-    )
-progress_html += "</div>"
-st.markdown(progress_html, unsafe_allow_html=True)
+    # ──────────────────────────────────────────────
+    # Step 3: Facilities & Services
+    # ──────────────────────────────────────────────
+    st.header(L("step3"))
 
-# ──────────────────────────────────────────────
-# Step 1: Basic Information
-# ──────────────────────────────────────────────
-st.header(L("step1"))
-store_name = st.text_input(L("store_name"), key="store_name")
-phone = st.text_input(L("phone"), key="phone")
-category = st.selectbox(
-    L("category"),
-    options=CATEGORY_OPTIONS,
-    key="category",
-)
-contact_name = st.text_input(L("contact"), key="contact_name")
-email = st.text_input(L("email"), key="email")
+    language_options = ["English", "Malay", "Indonesian", "French", "Chinese", "Korean", "Other"]
+    languages = st.multiselect(L("languages_available"), language_options, key="languages")
 
-st.divider()
+    wifi_options = [L("wifi_available"), L("wifi_not_available")]
+    wifi = st.radio(L("wifi"), wifi_options, key="wifi_radio", horizontal=True)
 
-# ──────────────────────────────────────────────
-# Step 2: Business Information
-# ──────────────────────────────────────────────
-st.header(L("step2"))
-business_hours = st.text_area(L("business_hours"), key="business_hours")
-regular_holiday = st.text_input(L("regular_holiday"), key="regular_holiday")
-nearest_station = st.text_input(L("nearest_station"), key="nearest_station")
+    payment_options = ["Cash", "Visa", "Mastercard", "JCB", "American Express"]
+    payment_methods = st.multiselect(L("payment_methods"), payment_options, key="payments")
 
-st.divider()
+    halal_options = [
+        L("halal_full"),
+        L("halal_muslim_friendly"),
+        L("halal_menu"),
+        L("halal_no_pork"),
+        L("halal_vegan"),
+    ]
+    halal_level = st.radio(L("halal_level"), halal_options, key="halal_level_radio")
 
-# ──────────────────────────────────────────────
-# Step 3: Facilities & Services
-# ──────────────────────────────────────────────
-st.header(L("step3"))
+    prep_options = [
+        L("prep_separate_kitchen"),
+        L("prep_separate_utensils"),
+        L("prep_dedicated_area"),
+        L("prep_same_kitchen"),
+        L("prep_unknown"),
+    ]
+    prep_transparency = st.radio(L("prep_transparency"), prep_options, key="prep_transparency_radio")
 
-language_options = ["English", "Malay", "Indonesian", "French", "Chinese", "Korean", "Other"]
-languages = st.multiselect(L("languages_available"), language_options, key="languages")
+    st.divider()
 
-wifi_options = [L("wifi_available"), L("wifi_not_available")]
-wifi = st.radio(L("wifi"), wifi_options, key="wifi_radio", horizontal=True)
+    # ──────────────────────────────────────────────
+    # Step 4: Photo Upload
+    # ──────────────────────────────────────────────
+    st.header(L("step4"))
 
-payment_options = ["Cash", "Visa", "Mastercard", "JCB", "American Express"]
-payment_methods = st.multiselect(L("payment_methods"), payment_options, key="payments")
+    st.subheader(L("top_photos"))
+    top_cols = st.columns(3)
+    top_photos = []
+    for i in range(3):
+        with top_cols[i]:
+            f = st.file_uploader(
+                L("top_n").format(n=i + 1),
+                type=["jpg", "jpeg", "png", "webp"],
+                key=f"top_photo_{i}",
+            )
+            top_photos.append(f)
+            if f:
+                display_image_with_orientation(f)
 
-halal_options = [
-    L("halal_full"),
-    L("halal_muslim_friendly"),
-    L("halal_menu"),
-    L("halal_no_pork"),
-    L("halal_vegan"),
-]
-halal_level = st.radio(L("halal_level"), halal_options, key="halal_level_radio")
+    st.subheader(L("cert_photos"))
+    if halal_level == L("halal_full"):
+        st.info(L("cert_required"))
+    cert_photos = []
+    cert_cols = st.columns(3)
+    for i in range(3):
+        with cert_cols[i]:
+            f = st.file_uploader(
+                L("cert_n").format(n=i + 1),
+                type=["jpg", "jpeg", "png", "webp"],
+                key=f"cert_photo_{i}",
+            )
+            cert_photos.append(f)
+            if f:
+                display_image_with_orientation(f)
 
-prep_options = [
-    L("prep_separate_kitchen"),
-    L("prep_separate_utensils"),
-    L("prep_dedicated_area"),
-    L("prep_same_kitchen"),
-    L("prep_unknown"),
-]
-prep_transparency = st.radio(L("prep_transparency"), prep_options, key="prep_transparency_radio")
+    st.divider()
 
-st.divider()
+    # ──────────────────────────────────────────────
+    # Step 5: Highlights
+    # ──────────────────────────────────────────────
+    st.header(L("step5"))
+    st.caption(L("highlights_min"))
+    highlight_cols = st.columns(3)
+    highlights = []
+    for i in range(3):
+        with highlight_cols[i]:
+            st.markdown(f"**{L('highlight_n').format(n=i+1)}**")
+            h_photo = st.file_uploader(
+                L("highlight_photo"),
+                type=["jpg", "jpeg", "png", "webp"],
+                key=f"highlight_photo_{i}",
+            )
+            if h_photo:
+                display_image_with_orientation(h_photo)
+            h_title = st.text_input(L("highlight_title"), key=f"highlight_title_{i}")
+            h_desc = st.text_area(L("highlight_desc"), key=f"highlight_desc_{i}")
+            highlights.append({"photo": h_photo, "title": h_title, "description": h_desc})
 
-# ──────────────────────────────────────────────
-# Step 4: Photo Upload
-# ──────────────────────────────────────────────
-st.header(L("step4"))
+    st.divider()
 
-st.subheader(L("top_photos"))
-top_cols = st.columns(3)
-top_photos = []
-for i in range(3):
-    with top_cols[i]:
-        f = st.file_uploader(
-            L("top_n").format(n=i + 1),
-            type=["jpg", "jpeg", "png", "webp"],
-            key=f"top_photo_{i}",
-        )
-        top_photos.append(f)
-        if f:
-            display_image_with_orientation(f)
+    # ──────────────────────────────────────────────
+    # Step 6: Menu Information
+    # ──────────────────────────────────────────────
+    st.header(L("step6"))
+    st.caption(L("menu_min"))
+    menu_cols = st.columns(3)
+    menus = []
+    for i in range(3):
+        with menu_cols[i]:
+            st.markdown(f"**{L('menu_n').format(n=i+1)}**")
+            m_photo = st.file_uploader(
+                L("menu_photo"),
+                type=["jpg", "jpeg", "png", "webp"],
+                key=f"menu_photo_{i}",
+            )
+            if m_photo:
+                display_image_with_orientation(m_photo)
+            m_name = st.text_input(L("menu_name"), key=f"menu_name_{i}")
+            m_desc = st.text_area(L("menu_desc"), key=f"menu_desc_{i}")
+            menus.append({"photo": m_photo, "name": m_name, "description": m_desc})
 
-st.subheader(L("cert_photos"))
-if halal_level == L("halal_full"):
-    st.info(L("cert_required"))
-cert_photos = []
-cert_cols = st.columns(3)
-for i in range(3):
-    with cert_cols[i]:
-        f = st.file_uploader(
-            L("cert_n").format(n=i + 1),
-            type=["jpg", "jpeg", "png", "webp"],
-            key=f"cert_photo_{i}",
-        )
-        cert_photos.append(f)
-        if f:
-            display_image_with_orientation(f)
+    st.divider()
 
-st.divider()
+    # ──────────────────────────────────────────────
+    # Step 7: Interior / Exterior Photos
+    # ──────────────────────────────────────────────
+    st.header(L("step7"))
+    st.caption(L("interior_min"))
+    interior_photos = []
+    int_cols = st.columns(5)
+    for i in range(5):
+        with int_cols[i]:
+            f = st.file_uploader(
+                L("interior_n").format(n=i + 1),
+                type=["jpg", "jpeg", "png", "webp"],
+                key=f"interior_photo_{i}",
+            )
+            interior_photos.append(f)
+            if f:
+                display_image_with_orientation(f)
 
-# ──────────────────────────────────────────────
-# Step 5: Highlights
-# ──────────────────────────────────────────────
-st.header(L("step5"))
-st.caption(L("highlights_min"))
-highlight_cols = st.columns(3)
-highlights = []
-for i in range(3):
-    with highlight_cols[i]:
-        st.markdown(f"**{L('highlight_n').format(n=i+1)}**")
-        h_photo = st.file_uploader(
-            L("highlight_photo"),
-            type=["jpg", "jpeg", "png", "webp"],
-            key=f"highlight_photo_{i}",
-        )
-        if h_photo:
-            display_image_with_orientation(h_photo)
-        h_title = st.text_input(L("highlight_title"), key=f"highlight_title_{i}")
-        h_desc = st.text_area(L("highlight_desc"), key=f"highlight_desc_{i}")
-        highlights.append({"photo": h_photo, "title": h_title, "description": h_desc})
-
-st.divider()
-
-# ──────────────────────────────────────────────
-# Step 6: Menu Information
-# ──────────────────────────────────────────────
-st.header(L("step6"))
-st.caption(L("menu_min"))
-menu_cols = st.columns(3)
-menus = []
-for i in range(3):
-    with menu_cols[i]:
-        st.markdown(f"**{L('menu_n').format(n=i+1)}**")
-        m_photo = st.file_uploader(
-            L("menu_photo"),
-            type=["jpg", "jpeg", "png", "webp"],
-            key=f"menu_photo_{i}",
-        )
-        if m_photo:
-            display_image_with_orientation(m_photo)
-        m_name = st.text_input(L("menu_name"), key=f"menu_name_{i}")
-        m_desc = st.text_area(L("menu_desc"), key=f"menu_desc_{i}")
-        menus.append({"photo": m_photo, "name": m_name, "description": m_desc})
-
-st.divider()
-
-# ──────────────────────────────────────────────
-# Step 7: Interior / Exterior Photos
-# ──────────────────────────────────────────────
-st.header(L("step7"))
-st.caption(L("interior_min"))
-interior_photos = []
-int_cols = st.columns(5)
-for i in range(5):
-    with int_cols[i]:
-        f = st.file_uploader(
-            L("interior_n").format(n=i + 1),
-            type=["jpg", "jpeg", "png", "webp"],
-            key=f"interior_photo_{i}",
-        )
-        interior_photos.append(f)
-        if f:
-            display_image_with_orientation(f)
-
-st.divider()
+    st.divider()
 
 # ──────────────────────────────────────────────
 # Step 8: Validation & Submit
@@ -814,6 +848,7 @@ if st.session_state.confirm_mode and not st.session_state.do_submit:
         st.write("**" + L("step6") + ":**", n_menu, "items" if st.session_state.lang == "en" else "件")
         st.write("**" + L("step7") + ":**", n_int, "photos" if st.session_state.lang == "en" else "枚")
 
+    st.info("⏳ " + L("before_submit_msg"))
     if st.button(L("confirm_submit"), type="primary", use_container_width=True):
         st.session_state.do_submit = True
         st.rerun()
@@ -971,23 +1006,26 @@ if st.session_state.do_submit:
                 try:
                     gs_resp = send_to_google(active_url, data_json, gs_images)
                     if gs_resp.get("status") == "success":
-                        st.success(L("gs_success"))
-                        st.balloons()
+                        st.session_state["_submission_result"] = "success"
                     else:
-                        st.error(L("gs_error").format(
-                            err=gs_resp.get("message", "Unknown error")))
+                        st.session_state["_submission_result"] = "error"
+                        st.session_state["_submission_message"] = L("gs_error").format(
+                            err=gs_resp.get("message", "Unknown error"))
                 except Exception as exc:
-                    st.error(L("gs_error").format(err=str(exc)[:200]))
+                    st.session_state["_submission_result"] = "error"
+                    st.session_state["_submission_message"] = L("gs_error").format(err=str(exc)[:200])
             else:
-                st.success(L("gs_success"))
+                st.session_state["_submission_result"] = "success"
 
         st.session_state.confirm_mode = False
         st.session_state.do_submit = False
         if "_submit_data" in st.session_state:
             del st.session_state["_submit_data"]
+        st.rerun()
     st.stop()
 
-# 確認ボタン（通常フロー）
+# 確認前メッセージ & 確認ボタン（通常フロー）
+st.info("📋 " + L("before_confirm_msg"))
 if st.button(L("confirm_and_submit"), type="primary", use_container_width=True):
     errors = []
 
