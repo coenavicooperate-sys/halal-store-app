@@ -27,7 +27,8 @@ LABELS = {
         "step7": "Step 7: Interior / Exterior Photos",
         "step8": "Validation & Submit",
         "store_name": "Store Name (Google Maps Listing)",
-        "phone": "Phone Number",
+        "phone": "Store Phone Number",
+        "category": "Category",
         "contact": "Contact Person Name",
         "email": "Email Address",
         "business_hours": "Business Hours (Mon–Sun / Holiday)",
@@ -128,7 +129,8 @@ LABELS = {
         "step7": "Step 7：内観・外観写真",
         "step8": "バリデーション・送信",
         "store_name": "店舗名（GoogleMap登録名）",
-        "phone": "電話番号",
+        "phone": "お店の電話番号",
+        "category": "カテゴリー",
         "contact": "担当者名",
         "email": "メールアドレス",
         "business_hours": "営業時間（月〜日 / 祝日）",
@@ -415,6 +417,20 @@ DRAFT_TEXT_KEYS = [
 ]
 DRAFT_MULTI_KEYS = ["languages", "payments"]
 DRAFT_RADIO_KEYS = ["wifi_radio", "halal_level_radio", "prep_transparency_radio"]
+DRAFT_SELECT_KEYS = ["category"]
+
+# Category options (alphabetical order)
+CATEGORY_OPTIONS = [
+    "Asian Food",
+    "Café",
+    "Japanese Food",
+    "Meat Dishes",
+    "Middle Eastern Food",
+    "Other Foods",
+    "Ramen",
+    "Vegan/Vegetarian Cuisine",
+    "Wagyu Beef",
+]
 
 
 def _drafts_list() -> list[str]:
@@ -436,6 +452,8 @@ def _save_draft(name: str):
     for k in DRAFT_MULTI_KEYS:
         payload[k] = st.session_state.get(k, [])
     for k in DRAFT_RADIO_KEYS:
+        payload[k] = st.session_state.get(k, None)
+    for k in DRAFT_SELECT_KEYS:
         payload[k] = st.session_state.get(k, None)
     payload["lang"] = st.session_state.get("lang", "en")
     safe_name = slugify(name, allow_unicode=True) or "draft"
@@ -466,6 +484,9 @@ def _apply_draft(draft: dict):
         if k in draft:
             st.session_state[k] = draft[k]
     for k in DRAFT_RADIO_KEYS:
+        if k in draft:
+            st.session_state[k] = draft[k]
+    for k in DRAFT_SELECT_KEYS:
         if k in draft:
             st.session_state[k] = draft[k]
     if "lang" in draft:
@@ -598,6 +619,11 @@ st.markdown(progress_html, unsafe_allow_html=True)
 st.header(L("step1"))
 store_name = st.text_input(L("store_name"), key="store_name")
 phone = st.text_input(L("phone"), key="phone")
+category = st.selectbox(
+    L("category"),
+    options=CATEGORY_OPTIONS,
+    key="category",
+)
 contact_name = st.text_input(L("contact"), key="contact_name")
 email = st.text_input(L("email"), key="email")
 
@@ -777,6 +803,7 @@ if st.session_state.confirm_mode and not st.session_state.do_submit:
     with st.expander(f"📋 {summary_title} - Summary", expanded=True):
         st.write("**" + L("store_name") + ":**", data.get("store_name", ""))
         st.write("**" + L("phone") + ":**", data.get("phone", ""))
+        st.write("**" + L("category") + ":**", data.get("category", ""))
         st.write("**" + L("email") + ":**", data.get("email", ""))
         st.write("**" + L("business_hours") + ":**", data.get("business_hours", "") or "-")
         st.write("**" + L("halal_level") + ":**", data.get("halal_level_display", ""))
@@ -800,6 +827,7 @@ if st.session_state.do_submit:
         with st.spinner(L("sending_msg")):
             store_name = data["store_name"]
             phone = data["phone"]
+            category = data.get("category", "")
             contact_name = data["contact_name"]
             email = data["email"]
             business_hours = data["business_hours"]
@@ -899,6 +927,7 @@ if st.session_state.do_submit:
                 data_json = {
                     "store_name": store_name,
                     "phone": phone,
+                    "category": category,
                     "contact_name": contact_name,
                     "email": email,
                     "business_hours": business_hours,
@@ -1010,6 +1039,7 @@ if st.button(L("confirm_and_submit"), type="primary", use_container_width=True):
             st.session_state["_submit_data"] = {
                 "store_name": store_name,
                 "phone": phone,
+                "category": category,
                 "contact_name": contact_name,
                 "email": email,
                 "business_hours": business_hours,
