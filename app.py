@@ -1,6 +1,7 @@
 import streamlit as st
 import json
 import os
+import re
 import zipfile
 import io
 import base64
@@ -79,6 +80,8 @@ LABELS = {
         "required_store": "Store Name is required.",
         "required_phone": "Phone Number is required.",
         "required_email": "Email Address is required.",
+        "invalid_email": "Please enter a valid email address.",
+        "required_payment": "At least one payment method is required.",
         "required_top3": "All 3 Top Photos are required.",
         "required_highlights": "At least 1 Highlight (photo, title, description) is required.",
         "required_cert": "At least 1 certification photo is required for the selected Halal level.",
@@ -188,6 +191,8 @@ LABELS = {
         "required_store": "店舗名は必須です。",
         "required_phone": "電話番号は必須です。",
         "required_email": "メールアドレスは必須です。",
+        "invalid_email": "有効なメールアドレスを入力してください。",
+        "required_payment": "決済方法を1つ以上選択してください。",
         "required_top3": "TOP写真は3枚すべて必要です。",
         "required_highlights": "こだわりは最低1セット（写真・表題・説明）必要です。",
         "required_cert": "選択されたハラルレベルでは認証写真が1枚以上必要です。",
@@ -362,6 +367,15 @@ def display_image_with_orientation(uploaded_file):
     except Exception:
         st.image(uploaded_file, use_container_width=True)
         uploaded_file.seek(0)
+
+
+def is_valid_email(email: str) -> bool:
+    """Check if string is a valid email format."""
+    if not email or not email.strip():
+        return False
+    # RFC 5322 simplified: local@domain.tld
+    pattern = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
+    return bool(re.match(pattern, email.strip()))
 
 
 def validate_upload(file) -> list[str]:
@@ -687,13 +701,19 @@ if not st.session_state.get("do_submit", False):
     # ──────────────────────────────────────────────
     st.header(L("step3"))
 
-    language_options = ["English", "Malay", "Indonesian", "French", "Chinese", "Korean", "Other"]
+    # 日本に来るムスリム観光客に多い言語（6つ）
+    language_options = ["Arabic", "Chinese", "English", "Indonesian", "Malay", "Urdu"]
     languages = st.multiselect(L("languages_available"), language_options, key="languages")
 
     wifi_options = [L("wifi_available"), L("wifi_not_available")]
     wifi = st.radio(L("wifi"), wifi_options, key="wifi_radio", horizontal=True)
 
-    payment_options = ["Cash", "Visa", "Mastercard", "JCB", "American Express"]
+    # 観光客向け（Suica/PASMO等の国内決済は除外）
+    payment_options = [
+        "Cash", "Visa", "Mastercard", "JCB", "American Express",
+        "Alipay", "WeChat Pay", "UnionPay", "Apple Pay", "Google Pay", "Other",
+    ]
+    st.caption(L("required_payment"))
     payment_methods = st.multiselect(L("payment_methods"), payment_options, key="payments")
 
     halal_options = [
@@ -1069,6 +1089,11 @@ if confirm_clicked:
         errors.append(L("required_phone"))
     if not email.strip():
         errors.append(L("required_email"))
+    elif not is_valid_email(email):
+        errors.append(L("invalid_email"))
+
+    if not payment_methods:
+        errors.append(L("required_payment"))
 
     if not all(top_photos):
         errors.append(L("required_top3"))
