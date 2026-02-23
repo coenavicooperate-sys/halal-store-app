@@ -127,6 +127,7 @@ LABELS = {
         "draft_load_desc": "Select a previously saved draft from the list and click \"Load Draft\" to restore your text and selections. You can continue editing from where you left off.",
         "draft_auto": "Auto-save",
         "draft_auto_on": "Auto-save is ON",
+        "manual_link": "Input Manual",
     },
     "ja": {
         "app_title": "ハラル対応レストラン 店舗情報登録",
@@ -238,6 +239,7 @@ LABELS = {
         "draft_load_desc": "過去に保存した下書きを一覧から選び、「下書き読み込み」ボタンを押すと、テキストや選択内容が復元されます。続きから編集を進められます。",
         "draft_auto": "自動保存",
         "draft_auto_on": "自動保存が有効です",
+        "manual_link": "入力マニュアル",
     },
 }
 
@@ -544,6 +546,11 @@ with lang_col2:
             st.session_state.lang = "ja"
 
 st.title(L("app_title"))
+
+# Manual link (if MANUAL_URL is set in secrets)
+manual_url = get_secret("MANUAL_URL", "")
+if manual_url and manual_url.strip():
+    st.markdown(f'📖 [{L("manual_link")}]({manual_url.strip()})')
 
 # ──────────────────────────────────────────────
 # Access code gate
