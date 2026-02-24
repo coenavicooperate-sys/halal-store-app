@@ -528,14 +528,26 @@ def _apply_draft(draft: dict):
 # ──────────────────────────────────────────────
 st.set_page_config(page_title="Halal Store Registration", layout="wide")
 
-# 外部利用者向け：Streamlitのフッター・デプロイボタン等を非表示
+# 外部利用者向け：Streamlit・GitHubアイコン、フッター等を非表示
 st.markdown(
     """
     <style>
-    footer {visibility: hidden;}
-    #MainMenu {visibility: hidden;}
-    .stDeployButton {display: none;}
-    [data-testid="stToolbar"] {display: none;}
+    /* フッター全体を非表示 */
+    footer {visibility: hidden !important; display: none !important;}
+    /* メニュー・ツールバー */
+    #MainMenu {visibility: hidden !important;}
+    .stDeployButton {display: none !important;}
+    [data-testid="stToolbar"] {display: none !important;}
+    /* Streamlit Cloud のフッターアイコン（Streamlit・GitHub） */
+    a[href*="streamlit.io"] {display: none !important;}
+    a[href*="github.com"] {display: none !important;}
+    /* viewerBadge 系（Streamlit Cloud のバッジ） */
+    .viewerBadge_container__1QSob,
+    .styles_viewerBadge__1yB5_,
+    .viewerBadge_link__1S137,
+    .viewerBadge_text__1JaDK,
+    [class*="viewerBadge"],
+    [class*="stBottom"] {display: none !important;}
     </style>
     """,
     unsafe_allow_html=True,
