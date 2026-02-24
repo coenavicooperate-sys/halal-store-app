@@ -804,53 +804,55 @@ if not st.session_state.get("do_submit", False):
     st.divider()
 
     # ──────────────────────────────────────────────
-    # Draft management (一番下に配置)
+    # Draft management (DRAFT_ENABLED=true で表示)
     # ──────────────────────────────────────────────
-    with st.expander(f"📋 {L('draft_section')}", expanded=False):
-        note_text = L("draft_note")
-        st.markdown(
-            f"<div style='font-size:16px; font-weight:bold; color:#b71c1c; "
-            f"margin:12px 0; padding:12px; background:#ffebee; border-radius:8px; "
-            f"border-left:4px solid #b71c1c;'>⚠️ {note_text}</div>",
-            unsafe_allow_html=True,
-        )
-        st.markdown("---")
-        st.markdown("**" + L("draft_save") + "**")
-        st.caption(L("draft_save_desc"))
-        draft_name_input = st.text_input(
-            L("draft_name"),
-            value=st.session_state.get("store_name", ""),
-            key="draft_name_input",
-        )
-        if st.button(L("draft_save"), use_container_width=True, type="primary"):
-            if draft_name_input.strip():
-                saved = _save_draft(draft_name_input.strip())
-                st.success(L("draft_saved").format(name=saved))
-            else:
-                st.warning(L("required_store"))
-        st.divider()
-        st.markdown("**" + L("draft_load") + "**")
-        st.caption(L("draft_load_desc"))
-        drafts = _drafts_list()
-        if drafts:
-            chosen = st.selectbox(L("draft_select"), drafts, key="draft_choice")
-            col_load, col_del = st.columns(2)
-            with col_load:
-                if st.button(L("draft_load"), use_container_width=True):
-                    draft = _load_draft(chosen)
-                    if draft:
-                        _apply_draft(draft)
-                        st.session_state["_draft_loaded_name"] = chosen
+    draft_enabled = get_secret("DRAFT_ENABLED", "").lower() in ("true", "1", "yes")
+    if draft_enabled:
+        with st.expander(f"📋 {L('draft_section')}", expanded=False):
+            note_text = L("draft_note")
+            st.markdown(
+                f"<div style='font-size:16px; font-weight:bold; color:#b71c1c; "
+                f"margin:12px 0; padding:12px; background:#ffebee; border-radius:8px; "
+                f"border-left:4px solid #b71c1c;'>⚠️ {note_text}</div>",
+                unsafe_allow_html=True,
+            )
+            st.markdown("---")
+            st.markdown("**" + L("draft_save") + "**")
+            st.caption(L("draft_save_desc"))
+            draft_name_input = st.text_input(
+                L("draft_name"),
+                value=st.session_state.get("store_name", ""),
+                key="draft_name_input",
+            )
+            if st.button(L("draft_save"), use_container_width=True, type="primary"):
+                if draft_name_input.strip():
+                    saved = _save_draft(draft_name_input.strip())
+                    st.success(L("draft_saved").format(name=saved))
+                else:
+                    st.warning(L("required_store"))
+            st.divider()
+            st.markdown("**" + L("draft_load") + "**")
+            st.caption(L("draft_load_desc"))
+            drafts = _drafts_list()
+            if drafts:
+                chosen = st.selectbox(L("draft_select"), drafts, key="draft_choice")
+                col_load, col_del = st.columns(2)
+                with col_load:
+                    if st.button(L("draft_load"), use_container_width=True):
+                        draft = _load_draft(chosen)
+                        if draft:
+                            _apply_draft(draft)
+                            st.session_state["_draft_loaded_name"] = chosen
+                            st.rerun()
+                with col_del:
+                    if st.button(L("draft_delete"), use_container_width=True):
+                        _delete_draft(chosen)
+                        st.success(L("draft_deleted").format(name=chosen))
                         st.rerun()
-            with col_del:
-                if st.button(L("draft_delete"), use_container_width=True):
-                    _delete_draft(chosen)
-                    st.success(L("draft_deleted").format(name=chosen))
-                    st.rerun()
-            if st.session_state.pop("_draft_loaded_name", None):
-                st.success(L("draft_loaded").format(name=chosen))
-        else:
-            st.info(L("draft_none"))
+                if st.session_state.pop("_draft_loaded_name", None):
+                    st.success(L("draft_loaded").format(name=chosen))
+            else:
+                st.info(L("draft_none"))
 
     st.divider()
 

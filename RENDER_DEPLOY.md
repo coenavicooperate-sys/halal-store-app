@@ -51,8 +51,10 @@ Streamlit Cloud と異なり、**Fork ボタンや GitHub アイコンが表示�
 | `WEBHOOK_URL` | Google Apps Script の Web App URL | ○ |
 | `ACCESS_CODE` | アクセスコード（例：store-owner-2026） | ○ |
 | `MANUAL_URL` | 入力マニュアルのURL（Canva/Google Drive等） | 任意 |
+| `DRAFT_ENABLED` | `true` で下書き機能を表示 | 任意（未設定=非表示） |
 
-※`MANUAL_URL` は空欄でも動作します。設定するとアプリ上部にリンクが表示されます。
+※`MANUAL_URL` は空欄でも動作します。設定するとアプリ上部にリンクが表示されます。  
+※`DRAFT_ENABLED` を `true` にすると、下書きの保存・読み込み機能が表示されます。
 
 ---
 
