@@ -528,6 +528,19 @@ def _apply_draft(draft: dict):
 # ──────────────────────────────────────────────
 st.set_page_config(page_title="Halal Store Registration", layout="wide")
 
+# 外部利用者向け：Streamlitのフッター・デプロイボタン等を非表示
+st.markdown(
+    """
+    <style>
+    footer {visibility: hidden;}
+    #MainMenu {visibility: hidden;}
+    .stDeployButton {display: none;}
+    [data-testid="stToolbar"] {display: none;}
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 if "lang" not in st.session_state:
     st.session_state.lang = "en"
 

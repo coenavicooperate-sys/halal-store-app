@@ -1,0 +1,7 @@
+[client]
+# 外部利用者向け：開発者向けメニュー（Fork等）を非表示
+toolbarMode = "viewer"
+
+[browser]
+# フォントや表示の統一（任意）
+gatherUsageStats = false

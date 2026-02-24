@@ -63,6 +63,9 @@ git push -u origin main
 ```toml
 WEBHOOK_URL = "https://script.google.com/macros/s/あなたのスクリプトID/exec"
 ACCESS_CODE = "store-owner-2026"
+
+# 入力マニュアルのリンク（任意・設定するとアプリ上部に表示）
+MANUAL_URL = "https://github.com/あなたのユーザー名/halal-store-app/blob/main/INPUT_MANUAL.md"
 ```
 
 7. **「Deploy!」** をクリック
@@ -80,6 +83,16 @@ https://あなたのアプリ名.streamlit.app
 ---
 
 ## セキュリティ対策
+
+### Fork・GitHubアイコンを非表示にする（外部利用者向け）
+
+**Fork ボタンと GitHub アイコン**は、リポジトリが **Public** のときのみ表示されます。外部の方に入力してもらう場合は、**GitHub リポジトリを Private に変更**してください。
+
+1. GitHub でリポジトリを開く
+2. **Settings** → **General** → **Danger Zone**
+3. **Change repository visibility** → **Make private**
+
+※ Streamlit Community Cloud の無料プランでは、Private リポジトリからデプロイできるアプリは **1つまで** です。
 
 | 対策 | 説明 |
 |------|------|
