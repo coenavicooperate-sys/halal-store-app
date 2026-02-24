@@ -1,0 +1,16 @@
+# Render デプロイ設定
+# https://render.com で「New」→「Blueprint」からこのリポジトリを選択してデプロイ
+
+services:
+  - type: web
+    runtime: python
+    name: halal-store-app
+    buildCommand: pip install -r requirements.txt
+    startCommand: streamlit run app.py --server.port=$PORT --server.address=0.0.0.0 --server.headless=true
+    envVars:
+      - key: WEBHOOK_URL
+        sync: false  # ダッシュボードで入力
+      - key: ACCESS_CODE
+        sync: false  # ダッシュボードで入力
+      - key: MANUAL_URL
+        sync: false  # ダッシュボードで入力（任意）

@@ -146,6 +146,14 @@ https://あなたのアプリ名.streamlit.app
 └─ ブラウザ: ZIP ダウンロード
 ```
 
+## Render へのデプロイ（Fork・GitHub アイコン非表示）
+
+Streamlit Cloud では Public リポジトリの場合、Fork ボタンや GitHub アイコンが表示されます。**Render** にデプロイすると、これらが表示されず、クリーンな画面で提供できます。
+
+詳細は **[RENDER_DEPLOY.md](RENDER_DEPLOY.md)** を参照してください。
+
+---
+
 ## ファイル構成
 
 ```
