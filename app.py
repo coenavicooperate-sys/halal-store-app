@@ -26,7 +26,7 @@ LABELS = {
         "step5": "Step 5: Highlights",
         "step6": "Step 6: Menu Information",
         "step7": "Step 7: Interior / Exterior Photos",
-        "step8": "Validation & Submit",
+        "step8": "Confirm & Submit",
         "store_name": "Store Name (Google Maps Listing)",
         "phone": "Store Phone Number",
         "category": "Category",
@@ -138,7 +138,7 @@ LABELS = {
         "step5": "Step 5：こだわり",
         "step6": "Step 6：メニュー情報",
         "step7": "Step 7：内観・外観写真",
-        "step8": "バリデーション・送信",
+        "step8": "確認・送信",
         "store_name": "店舗名（GoogleMap登録名）",
         "phone": "お店の電話番号",
         "category": "カテゴリー",
@@ -630,79 +630,6 @@ if st.session_state.get("do_submit", False):
 
 if not st.session_state.get("do_submit", False):
     # ──────────────────────────────────────────────
-    # Draft management (main area, always visible)
-    # ──────────────────────────────────────────────
-    with st.expander(f"📋 {L('draft_section')}", expanded=False):
-        # --- 画像の注意（大きく濃く） ---
-        note_text = L("draft_note")
-        st.markdown(
-            f"<div style='font-size:16px; font-weight:bold; color:#b71c1c; "
-            f"margin:12px 0; padding:12px; background:#ffebee; border-radius:8px; "
-            f"border-left:4px solid #b71c1c;'>⚠️ {note_text}</div>",
-            unsafe_allow_html=True,
-        )
-
-        st.markdown("---")
-
-        # --- 下書き保存 ---
-        st.markdown("**" + L("draft_save") + "**")
-        st.caption(L("draft_save_desc"))
-        draft_name_input = st.text_input(
-            L("draft_name"),
-            value=st.session_state.get("store_name", ""),
-            key="draft_name_input",
-        )
-        if st.button(L("draft_save"), use_container_width=True, type="primary"):
-            if draft_name_input.strip():
-                saved = _save_draft(draft_name_input.strip())
-                st.success(L("draft_saved").format(name=saved))
-            else:
-                st.warning(L("required_store"))
-
-        st.divider()
-
-        # --- 下書き読み込み ---
-        st.markdown("**" + L("draft_load") + "**")
-        st.caption(L("draft_load_desc"))
-        drafts = _drafts_list()
-        if drafts:
-            chosen = st.selectbox(L("draft_select"), drafts, key="draft_choice")
-            col_load, col_del = st.columns(2)
-            with col_load:
-                if st.button(L("draft_load"), use_container_width=True):
-                    draft = _load_draft(chosen)
-                    if draft:
-                        _apply_draft(draft)
-                        st.session_state["_draft_loaded_name"] = chosen
-                        st.rerun()
-            with col_del:
-                if st.button(L("draft_delete"), use_container_width=True):
-                    _delete_draft(chosen)
-                    st.success(L("draft_deleted").format(name=chosen))
-                    st.rerun()
-
-            if st.session_state.pop("_draft_loaded_name", None):
-                st.success(L("draft_loaded").format(name=chosen))
-        else:
-            st.info(L("draft_none"))
-
-    # ──────────────────────────────────────────────
-    # Progress bar
-    # ──────────────────────────────────────────────
-    steps = L("progress_steps")
-    progress_html = "<div style='display:flex;gap:4px;margin-bottom:24px;'>"
-    for i, step_label in enumerate(steps):
-        color = "#1f77b4" if i == 0 else "#ddd"
-        progress_html += (
-            f"<div style='flex:1;text-align:center;padding:8px 4px;"
-            f"background:{color};color:{'#fff' if i == 0 else '#333'};"
-            f"border-radius:6px;font-size:13px;font-weight:600;'>"
-            f"Step {i+1}<br><span style='font-weight:400;font-size:11px;'>{step_label}</span></div>"
-        )
-    progress_html += "</div>"
-    st.markdown(progress_html, unsafe_allow_html=True)
-
-    # ──────────────────────────────────────────────
     # Step 1: Basic Information
     # ──────────────────────────────────────────────
     st.header(L("step1"))
@@ -876,8 +803,59 @@ if not st.session_state.get("do_submit", False):
 
     st.divider()
 
+    # ──────────────────────────────────────────────
+    # Draft management (一番下に配置)
+    # ──────────────────────────────────────────────
+    with st.expander(f"📋 {L('draft_section')}", expanded=False):
+        note_text = L("draft_note")
+        st.markdown(
+            f"<div style='font-size:16px; font-weight:bold; color:#b71c1c; "
+            f"margin:12px 0; padding:12px; background:#ffebee; border-radius:8px; "
+            f"border-left:4px solid #b71c1c;'>⚠️ {note_text}</div>",
+            unsafe_allow_html=True,
+        )
+        st.markdown("---")
+        st.markdown("**" + L("draft_save") + "**")
+        st.caption(L("draft_save_desc"))
+        draft_name_input = st.text_input(
+            L("draft_name"),
+            value=st.session_state.get("store_name", ""),
+            key="draft_name_input",
+        )
+        if st.button(L("draft_save"), use_container_width=True, type="primary"):
+            if draft_name_input.strip():
+                saved = _save_draft(draft_name_input.strip())
+                st.success(L("draft_saved").format(name=saved))
+            else:
+                st.warning(L("required_store"))
+        st.divider()
+        st.markdown("**" + L("draft_load") + "**")
+        st.caption(L("draft_load_desc"))
+        drafts = _drafts_list()
+        if drafts:
+            chosen = st.selectbox(L("draft_select"), drafts, key="draft_choice")
+            col_load, col_del = st.columns(2)
+            with col_load:
+                if st.button(L("draft_load"), use_container_width=True):
+                    draft = _load_draft(chosen)
+                    if draft:
+                        _apply_draft(draft)
+                        st.session_state["_draft_loaded_name"] = chosen
+                        st.rerun()
+            with col_del:
+                if st.button(L("draft_delete"), use_container_width=True):
+                    _delete_draft(chosen)
+                    st.success(L("draft_deleted").format(name=chosen))
+                    st.rerun()
+            if st.session_state.pop("_draft_loaded_name", None):
+                st.success(L("draft_loaded").format(name=chosen))
+        else:
+            st.info(L("draft_none"))
+
+    st.divider()
+
 # ──────────────────────────────────────────────
-# Step 8: Validation & Submit
+# Step 8: Confirm & Submit
 # ──────────────────────────────────────────────
 st.header(L("step8"))
 
