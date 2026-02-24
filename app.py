@@ -572,11 +572,6 @@ with lang_col2:
 
 st.title(L("app_title"))
 
-# Manual link (if MANUAL_URL is set in secrets)
-manual_url = get_secret("MANUAL_URL", "")
-if manual_url and manual_url.strip():
-    st.markdown(f'📖 [{L("manual_link")}]({manual_url.strip()})')
-
 # ──────────────────────────────────────────────
 # Access code gate
 # ──────────────────────────────────────────────
@@ -596,6 +591,11 @@ if access_code_secret and not st.session_state.authenticated:
         else:
             st.error(L("access_code_error"))
     st.stop()
+
+# Manual link (ログイン後のみ表示)
+manual_url = get_secret("MANUAL_URL", "")
+if manual_url and manual_url.strip():
+    st.markdown(f'📖 [{L("manual_link")}]({manual_url.strip()})')
 
 # Read webhook URL from secrets (invisible to end users)
 webhook_url = get_secret("WEBHOOK_URL", "")
