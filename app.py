@@ -2,6 +2,7 @@ import streamlit as st
 import json
 import os
 import re
+import time
 import zipfile
 import io
 import base64
@@ -612,7 +613,7 @@ def _apply_draft(draft: dict):
 # ──────────────────────────────────────────────
 st.set_page_config(page_title="Halal Store Registration", layout="wide")
 
-# 外部利用者向け：Streamlit・GitHubアイコン、フッター等を非表示
+# 外部利用者向け：Streamlit・GitHubアイコン、フッター、アプリURLバー等を非表示
 st.markdown(
     """
     <style>
@@ -632,6 +633,17 @@ st.markdown(
     .viewerBadge_text__1JaDK,
     [class*="viewerBadge"],
     [class*="stBottom"] {display: none !important;}
+    /* アプリURLバー（streamlit.app 表示・Xボタン付き）を非表示 */
+    [data-testid="stBottom"],
+    section[data-testid="stBottom"],
+    [class*="stBottom"],
+    [class*="stAppUrl"],
+    [class*="stShare"],
+    [class*="stDeploy"],
+    div[class*="stBottom"],
+    section[class*="stBottom"] {display: none !important; visibility: hidden !important;}
+    /* 下部URL表示バー（モバイル等） */
+    a[href*="streamlit.app"] {display: none !important;}
     </style>
     """,
     unsafe_allow_html=True,
@@ -738,14 +750,29 @@ if st.session_state.get("do_submit", False):
 if not st.session_state.get("do_submit", False):
     # 画像あり時は「読み込み中」を表示して次のアクションをブロック
     from contextlib import nullcontext
-    _has_files = any(st.session_state.get(f"top_photo_{i}") for i in range(3))
-    _has_files = _has_files or any(st.session_state.get(f"cert_photo_{i}") for i in range(3))
-    _has_files = _has_files or any(st.session_state.get(f"highlight_photo_{i}") for i in range(3))
-    _has_files = _has_files or any(st.session_state.get(f"menu_photo_{i}") for i in range(3))
-    _has_files = _has_files or any(st.session_state.get(f"interior_photo_{i}") for i in range(5))
+
+    def _is_uploaded_file(v):
+        return v is not None and (hasattr(v, "name") or hasattr(v, "read"))
+
+    _photo_keys = (
+        [f"top_photo_{i}" for i in range(3)]
+        + [f"cert_photo_{i}" for i in range(3)]
+        + [f"highlight_photo_{i}" for i in range(3)]
+        + [f"menu_photo_{i}" for i in range(3)]
+        + [f"interior_photo_{i}" for i in range(5)]
+    )
+    _has_files = any(_is_uploaded_file(st.session_state.get(k)) for k in _photo_keys)
+    # セッション内の任意のUploadedFileも検出（キー形式が変わった場合の保険）
+    if not _has_files:
+        for v in st.session_state.values():
+            if _is_uploaded_file(v):
+                _has_files = True
+                break
     _spinner_ctx = st.spinner(L("image_loading_msg")) if _has_files else nullcontext()
 
     with _spinner_ctx:
+        if _has_files:
+            time.sleep(0.5)  # スピナーを確実に表示（画像処理中のブロック感を出す）
         st.caption("💡 " + L("session_hint"))
         # ──────────────────────────────────────────────
         # Draft（長時間入力対策：こまめに保存を推奨）
