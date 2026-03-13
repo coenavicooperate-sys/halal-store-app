@@ -717,7 +717,7 @@ if "_submission_result" in st.session_state:
     st.stop()
 
 # ──────────────────────────────────────────────
-# 送信処理中：スマホで確実に見えるよう画面上部に固定表示
+# 送信処理中：スマホで確実に見えるよう画面中央に固定表示
 # ──────────────────────────────────────────────
 if st.session_state.get("do_submit", False):
     st.markdown(
@@ -725,22 +725,30 @@ if st.session_state.get("do_submit", False):
         <style>
         @keyframes spin {{ 0% {{ transform: rotate(0deg); }} 100% {{ transform: rotate(360deg); }} }}
         @keyframes pulse {{ 0%, 100% {{ opacity: 1; }} 50% {{ opacity: 0.8; }} }}
-        .sending-fixed {{
-            position: fixed !important; top: 0 !important; left: 0 !important; right: 0 !important;
-            z-index: 99999 !important; text-align: center; padding: 32px 16px 24px !important;
-            background: linear-gradient(135deg, #0d47a1 0%, #1565c0 50%, #1976d2 100%) !important;
-            color: #fff !important; box-shadow: 0 4px 20px rgba(0,0,0,0.3) !important;
-            animation: pulse 1.5s ease-in-out infinite;
+        .sending-overlay {{
+            position: fixed !important; top: 0 !important; left: 0 !important; right: 0 !important; bottom: 0 !important;
+            z-index: 99999 !important; display: flex !important; align-items: center !important; justify-content: center !important;
+            background: rgba(0,0,0,0.5) !important; padding: 20px !important;
         }}
-        .sending-spinner {{ display: inline-block; font-size: 40px; animation: spin 1s linear infinite; margin-bottom: 12px; }}
-        .sending-title {{ font-size: 24px; font-weight: bold; margin-bottom: 8px; }}
-        .sending-sub {{ font-size: 15px; opacity: 0.95; }}
-        .sending-spacer {{ height: 140px; }}
+        .sending-fixed {{
+            position: relative !important; top: auto !important; left: auto !important; right: auto !important;
+            width: 100% !important; max-width: 400px !important; text-align: center !important;
+            padding: 36px 24px 32px !important;
+            background: linear-gradient(135deg, #0d47a1 0%, #1565c0 50%, #1976d2 100%) !important;
+            color: #fff !important; box-shadow: 0 8px 32px rgba(0,0,0,0.3) !important;
+            border-radius: 16px !important; animation: pulse 1.5s ease-in-out infinite;
+        }}
+        .sending-spinner {{ display: inline-block; font-size: 48px; animation: spin 1s linear infinite; margin-bottom: 16px; }}
+        .sending-title {{ font-size: 22px; font-weight: bold; margin-bottom: 10px; }}
+        .sending-sub {{ font-size: 15px; opacity: 0.95; line-height: 1.4; }}
+        .sending-spacer {{ height: 180px; }}
         </style>
+        <div class="sending-overlay">
         <div class="sending-fixed">
         <div class="sending-spinner">⏳</div>
         <div class="sending-title">{L('sending_banner')}</div>
         <div class="sending-sub">{L('sending_banner_sub')}</div>
+        </div>
         </div>
         <div class="sending-spacer"></div>
         """,
@@ -1007,13 +1015,29 @@ if "confirm_mode" not in st.session_state:
 if "do_submit" not in st.session_state:
     st.session_state.do_submit = False
 
-# Confirm&Submit押下後すぐに「処理中」を表示（1回rerunしてから処理）
+# Confirm&Submit押下後すぐに「処理中」をポップアップ表示（スマホでも確実に見える位置）
 if st.session_state.get("_pending_confirm", False):
     st.markdown(
         f"""
-        <div style="text-align:center; padding:24px 20px; margin:0 0 20px 0;
-        background:linear-gradient(135deg,#1565c0,#0d47a1); border-radius:12px; color:#fff;">
-        <div style="font-size:20px; font-weight:bold;">⏳ {L('after_confirm_click_msg')}</div>
+        <style>
+        .processing-overlay {{
+            position: fixed !important; top: 0 !important; left: 0 !important; right: 0 !important; bottom: 0 !important;
+            z-index: 99999 !important; display: flex !important; align-items: center !important; justify-content: center !important;
+            background: rgba(0,0,0,0.5) !important; padding: 20px !important;
+        }}
+        .processing-popup {{
+            background: linear-gradient(135deg, #1565c0 0%, #0d47a1 100%) !important; color: #fff !important;
+            border-radius: 16px !important; padding: 32px 28px !important; text-align: center !important;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3) !important; max-width: 90% !important;
+        }}
+        .processing-popup .spinner {{ font-size: 48px !important; margin-bottom: 16px !important; display: block !important; }}
+        .processing-popup .msg {{ font-size: 18px !important; font-weight: bold !important; line-height: 1.4 !important; }}
+        </style>
+        <div class="processing-overlay">
+        <div class="processing-popup">
+        <span class="spinner">⏳</span>
+        <div class="msg">{L('after_confirm_click_msg')}</div>
+        </div>
         </div>
         """,
         unsafe_allow_html=True,
