@@ -315,7 +315,7 @@ def compress_uploaded_image(uploaded_file):
 def maybe_compress(file, cache_key: str):
     """圧縮可能なら圧縮版を返す。キャッシュで再圧縮を避け、サクサク動作。"""
     if not file:
-        for k in [cache_key, f"{cache_key}_src"]:
+        for k in [cache_key, f"{cache_key}_src", f"{cache_key}_disp", f"{cache_key}_disp_src"]:
             st.session_state.pop(k, None)
         return None
     # 同一ファイルならキャッシュを使用（毎回のrerunで再圧縮しない）
@@ -427,19 +427,28 @@ def generate_thumbnail(images_480: list[Image.Image]) -> Image.Image:
     return combined
 
 
-def display_image_with_orientation(uploaded_file):
-    """Display uploaded image with correct EXIF orientation (for mobile photos)."""
+def display_image_cached(uploaded_file, cache_key: str):
+    """画像表示をキャッシュし、入力のたびの再処理を避けて軽量化。"""
     if not uploaded_file:
         return
+    src_id = f"{cache_key}_disp_src"
+    if src_id in st.session_state and st.session_state[src_id] == id(uploaded_file):
+        cached = st.session_state.get(f"{cache_key}_disp")
+        if cached is not None:
+            st.image(cached, use_container_width=True)
+            return
     try:
         uploaded_file.seek(0)
         img = Image.open(uploaded_file)
         img = fix_exif_rotation(img)
         if img.mode in ("RGBA", "P"):
             img = img.convert("RGB")
+        st.session_state[f"{cache_key}_disp"] = img
+        st.session_state[src_id] = id(uploaded_file)
         st.image(img, use_container_width=True)
         uploaded_file.seek(0)
     except Exception:
+        uploaded_file.seek(0)
         st.image(uploaded_file, use_container_width=True)
         uploaded_file.seek(0)
 
@@ -851,7 +860,7 @@ if not st.session_state.get("do_submit", False):
             f = maybe_compress(f, f"comp_top_{i}")
             top_photos.append(f)
             if f:
-                display_image_with_orientation(f)
+                display_image_cached(f, f"comp_top_{i}")
 
     st.subheader(L("cert_photos"))
     st.markdown(f"**📐 {L('recommended_vert')}**")
@@ -869,7 +878,7 @@ if not st.session_state.get("do_submit", False):
             f = maybe_compress(f, f"comp_cert_{i}")
             cert_photos.append(f)
             if f:
-                display_image_with_orientation(f)
+                display_image_cached(f, f"comp_cert_{i}")
 
     st.divider()
 
@@ -891,7 +900,7 @@ if not st.session_state.get("do_submit", False):
             )
             h_photo = maybe_compress(h_photo, f"comp_hl_{i}")
             if h_photo:
-                display_image_with_orientation(h_photo)
+                display_image_cached(h_photo, f"comp_hl_{i}")
             h_title = st.text_input(L("highlight_title"), key=f"highlight_title_{i}")
             h_desc = st.text_area(L("highlight_desc"), key=f"highlight_desc_{i}")
             highlights.append({"photo": h_photo, "title": h_title, "description": h_desc})
@@ -916,7 +925,7 @@ if not st.session_state.get("do_submit", False):
             )
             m_photo = maybe_compress(m_photo, f"comp_menu_{i}")
             if m_photo:
-                display_image_with_orientation(m_photo)
+                display_image_cached(m_photo, f"comp_menu_{i}")
             m_name = st.text_input(L("menu_name"), key=f"menu_name_{i}")
             m_desc = st.text_area(L("menu_desc"), key=f"menu_desc_{i}")
             menus.append({"photo": m_photo, "name": m_name, "description": m_desc})
@@ -941,7 +950,7 @@ if not st.session_state.get("do_submit", False):
             f = maybe_compress(f, f"comp_int_{i}")
             interior_photos.append(f)
             if f:
-                display_image_with_orientation(f)
+                display_image_cached(f, f"comp_int_{i}")
 
     st.divider()
 
