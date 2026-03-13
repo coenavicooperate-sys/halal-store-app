@@ -261,7 +261,7 @@ def L(key):
 # ──────────────────────────────────────────────
 ALLOWED_EXTENSIONS = {"jpg", "jpeg", "png", "webp"}
 MAX_FILE_SIZE = 10 * 1024 * 1024
-MAX_PREVIEW_PIXELS = 1500  # アップロード時に自動縮小（メモリ節約・クラッシュ防止）
+MAX_PREVIEW_PIXELS = 1000  # 表示用に軽量化（メモリ節約・クラッシュ防止）
 
 
 class CompressedImageFile:
@@ -299,9 +299,9 @@ def compress_uploaded_image(uploaded_file):
         if w > MAX_PREVIEW_PIXELS or h > MAX_PREVIEW_PIXELS:
             ratio = min(MAX_PREVIEW_PIXELS / w, MAX_PREVIEW_PIXELS / h)
             new_w, new_h = int(w * ratio), int(h * ratio)
-            img = img.resize((new_w, new_h), Image.LANCZOS)
+            img = img.resize((new_w, new_h), Image.BILINEAR)  # LANCZOSより軽量
         buf = io.BytesIO()
-        img.save(buf, format="JPEG", quality=85, optimize=True)
+        img.save(buf, format="JPEG", quality=75, optimize=False)  # 軽量化
         buf.seek(0)
         name = getattr(uploaded_file, "name", "photo.jpg")
         if not name.lower().endswith((".jpg", ".jpeg")):
@@ -965,6 +965,18 @@ if "confirm_mode" not in st.session_state:
 if "do_submit" not in st.session_state:
     st.session_state.do_submit = False
 
+# Confirm&Submit押下後すぐに「処理中」を表示（1回rerunしてから処理）
+if st.session_state.get("_pending_confirm", False):
+    st.markdown(
+        f"""
+        <div style="text-align:center; padding:24px 20px; margin:0 0 20px 0;
+        background:linear-gradient(135deg,#1565c0,#0d47a1); border-radius:12px; color:#fff;">
+        <div style="font-size:20px; font-weight:bold;">⏳ {L('after_confirm_click_msg')}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
 # 編集に戻る
 if st.session_state.confirm_mode and st.button(L("back_edit"), use_container_width=True):
     st.session_state.confirm_mode = False
@@ -1194,12 +1206,11 @@ if st.session_state.do_submit:
 st.info("📋 " + L("before_confirm_msg"))
 confirm_clicked = st.button(L("confirm_and_submit"), type="primary", use_container_width=True)
 if confirm_clicked:
-    st.markdown(
-        f"<div style='font-size:14px; color:#1565c0; margin-top:8px; padding:10px; "
-        f"background:#e3f2fd; border-radius:6px; border-left:4px solid #1565c0;'>"
-        f"⏳ {L('after_confirm_click_msg')}</div>",
-        unsafe_allow_html=True,
-    )
+    st.session_state["_pending_confirm"] = True
+    st.rerun()
+
+# _pending_confirm の次run：上で「処理中」を表示済み。ここでバリデーション実行
+if st.session_state.get("_pending_confirm"):
     errors = []
 
     if not store_name.strip():
@@ -1246,11 +1257,13 @@ if confirm_clicked:
         errors.extend(validate_upload(f))
 
     if errors:
+        st.session_state["_pending_confirm"] = False
         st.error(L("validation_error"))
         for e in errors:
             st.warning(e)
     else:
         # 確認モードへ：データを保存して確認画面表示
+        st.session_state["_pending_confirm"] = False
         with st.spinner(L("processing_msg")):
             st.session_state["_submit_data"] = {
                 "store_name": store_name,
