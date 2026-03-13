@@ -101,6 +101,8 @@ LABELS = {
         "gs_sending": "Sending... This may take a minute. Please do not close this page.",
         "processing_msg": "Processing. Please wait a moment. Do not close this page.",
         "sending_msg": "Sending. This may take 1–2 minutes. Please do not close this page.",
+        "sending_banner": "SENDING...",
+        "sending_banner_sub": "This may take 1–2 minutes. Do not close this page.",
         "before_confirm_msg": "Click the button below to proceed to confirmation. Please wait a moment after clicking.",
         "after_confirm_click_msg": "Processing. This may take a moment. Please do not close this page.",
         "before_submit_msg": "Click the button below to submit. Sending may take 1–2 minutes. Do not close this page.",
@@ -215,6 +217,8 @@ LABELS = {
         "gs_sending": "送信中です... 1〜2分かかる場合があります。このページを閉じないでください。",
         "processing_msg": "作業中です。少々お待ちください。このページを閉じないでください。",
         "sending_msg": "送信中です。1〜2分かかる場合があります。このページを閉じないでください。",
+        "sending_banner": "送信中",
+        "sending_banner_sub": "1〜2分かかります。このページを閉じないでください。",
         "before_confirm_msg": "下のボタンをクリックすると確認画面に進みます。クリック後、少々お待ちください。",
         "after_confirm_click_msg": "処理中です。少々お待ちください。このページを閉じないでください。",
         "before_submit_msg": "下のボタンをクリックすると送信が開始されます。1〜2分かかる場合があります。このページを閉じないでください。",
@@ -308,11 +312,20 @@ def compress_uploaded_image(uploaded_file):
         return uploaded_file  # 失敗時は元のファイルをそのまま使用
 
 
-def maybe_compress(file):
-    """圧縮可能なら圧縮版を返し、失敗時は元のファイルを返す。"""
+def maybe_compress(file, cache_key: str):
+    """圧縮可能なら圧縮版を返す。キャッシュで再圧縮を避け、サクサク動作。"""
     if not file:
+        for k in [cache_key, f"{cache_key}_src"]:
+            st.session_state.pop(k, None)
         return None
-    return compress_uploaded_image(file)
+    # 同一ファイルならキャッシュを使用（毎回のrerunで再圧縮しない）
+    src_id = f"{cache_key}_src"
+    if src_id in st.session_state and st.session_state[src_id] == id(file):
+        return st.session_state.get(cache_key, file)
+    result = compress_uploaded_image(file)
+    st.session_state[cache_key] = result
+    st.session_state[src_id] = id(file)
+    return result
 
 
 def fix_exif_rotation(img: Image.Image) -> Image.Image:
@@ -681,12 +694,19 @@ if "_submission_result" in st.session_state:
     st.stop()
 
 # ──────────────────────────────────────────────
-# 送信処理中は画面上部にメッセージを表示し、フォームをスキップ
+# 送信処理中：目立つバナーを最上部に表示（ボタン押下後すぐ表示）
 # ──────────────────────────────────────────────
 if st.session_state.get("do_submit", False):
-    st.info("⏳ " + L("sending_msg"))
-    st.caption("Please wait..." if st.session_state.lang == "en" else "少々お待ちください...")
-    st.divider()
+    st.markdown(
+        f"""
+        <div style="text-align:center; padding:32px 20px; margin:0 0 24px 0; background:linear-gradient(135deg,#1565c0,#0d47a1);
+        border-radius:12px; color:#fff; box-shadow:0 4px 20px rgba(0,0,0,0.2);">
+        <div style="font-size:28px; font-weight:bold; margin-bottom:8px;">⏳ {L('sending_banner')}</div>
+        <div style="font-size:16px; opacity:0.95;">{L('sending_banner_sub')}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 if not st.session_state.get("do_submit", False):
     st.caption("💡 " + L("session_hint"))
@@ -815,7 +835,7 @@ if not st.session_state.get("do_submit", False):
                 type=["jpg", "jpeg", "png", "webp"],
                 key=f"top_photo_{i}",
             )
-            f = maybe_compress(f)
+            f = maybe_compress(f, f"comp_top_{i}")
             top_photos.append(f)
             if f:
                 display_image_with_orientation(f)
@@ -833,7 +853,7 @@ if not st.session_state.get("do_submit", False):
                 type=["jpg", "jpeg", "png", "webp"],
                 key=f"cert_photo_{i}",
             )
-            f = maybe_compress(f)
+            f = maybe_compress(f, f"comp_cert_{i}")
             cert_photos.append(f)
             if f:
                 display_image_with_orientation(f)
@@ -856,7 +876,7 @@ if not st.session_state.get("do_submit", False):
                 type=["jpg", "jpeg", "png", "webp"],
                 key=f"highlight_photo_{i}",
             )
-            h_photo = maybe_compress(h_photo)
+            h_photo = maybe_compress(h_photo, f"comp_hl_{i}")
             if h_photo:
                 display_image_with_orientation(h_photo)
             h_title = st.text_input(L("highlight_title"), key=f"highlight_title_{i}")
@@ -881,7 +901,7 @@ if not st.session_state.get("do_submit", False):
                 type=["jpg", "jpeg", "png", "webp"],
                 key=f"menu_photo_{i}",
             )
-            m_photo = maybe_compress(m_photo)
+            m_photo = maybe_compress(m_photo, f"comp_menu_{i}")
             if m_photo:
                 display_image_with_orientation(m_photo)
             m_name = st.text_input(L("menu_name"), key=f"menu_name_{i}")
@@ -905,7 +925,7 @@ if not st.session_state.get("do_submit", False):
                 type=["jpg", "jpeg", "png", "webp"],
                 key=f"interior_photo_{i}",
             )
-            f = maybe_compress(f)
+            f = maybe_compress(f, f"comp_int_{i}")
             interior_photos.append(f)
             if f:
                 display_image_with_orientation(f)
@@ -953,12 +973,7 @@ if st.session_state.confirm_mode and not st.session_state.do_submit:
     st.info("⏳ " + L("before_submit_msg"))
     submit_clicked = st.button(L("confirm_submit"), type="primary", use_container_width=True)
     if submit_clicked:
-        st.markdown(
-            f"<div style='font-size:15px; color:#1565c0; margin-top:12px; padding:14px; "
-            f"background:#e3f2fd; border-radius:8px; border-left:6px solid #1565c0;'>"
-            f"⏳ {L('after_submit_click_msg')}</div>",
-            unsafe_allow_html=True,
-        )
+        # 送信ボタン押下後すぐに送信フラグを立ててrerun → 次フレームで送信中バナーを表示してから送信開始
         st.session_state.do_submit = True
         st.rerun()
     st.markdown(
@@ -975,7 +990,7 @@ if st.session_state.do_submit:
     data = st.session_state.get("_submit_data", {})
     if data:
         try:
-            with st.spinner(L("sending_msg")):
+            with st.status(L("sending_msg"), state="running", expanded=True):
                 store_name = data.get("store_name", "")
                 phone = data.get("phone", "")
                 category = data.get("category", "")
