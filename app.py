@@ -134,6 +134,7 @@ LABELS = {
         "manual_link": "Input Manual",
         "session_hint": "Long input sessions may disconnect. Photos are automatically resized for optimal display.",
         "image_loading_msg": "Loading images. Please wait. Do not interact.",
+        "image_registering_msg": "Registering images. Please wait until they appear on screen. Do not interact.",
     },
     "ja": {
         "app_title": "ハラル対応レストラン 店舗情報登録",
@@ -251,6 +252,7 @@ LABELS = {
         "manual_link": "入力マニュアル",
         "session_hint": "長時間の入力で画面が切れる場合があります。写真は自動で最適サイズに縮小されます。",
         "image_loading_msg": "画像を読み込み中です。少々お待ちください。",
+        "image_registering_msg": "画像登録中です。画面に反映されるまでお待ちください。入力はご遠慮ください。",
     },
 }
 
@@ -697,6 +699,36 @@ if manual_url and manual_url.strip():
 webhook_url = get_secret("WEBHOOK_URL", "")
 
 # ──────────────────────────────────────────────
+# Confirm&Submit押下後：最初に処理中ポップアップを表示（固まり防止）
+# ──────────────────────────────────────────────
+if st.session_state.get("_pending_confirm", False):
+    st.markdown(
+        f"""
+        <style>
+        .processing-overlay {{
+            position: fixed !important; top: 0 !important; left: 0 !important; right: 0 !important; bottom: 0 !important;
+            z-index: 99999 !important; display: flex !important; align-items: center !important; justify-content: center !important;
+            background: rgba(0,0,0,0.5) !important; padding: 20px !important;
+        }}
+        .processing-popup {{
+            background: linear-gradient(135deg, #1565c0 0%, #0d47a1 100%) !important; color: #fff !important;
+            border-radius: 16px !important; padding: 32px 28px !important; text-align: center !important;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3) !important; max-width: 90% !important;
+        }}
+        .processing-popup .spinner {{ font-size: 48px !important; margin-bottom: 16px !important; display: block !important; }}
+        .processing-popup .msg {{ font-size: 18px !important; font-weight: bold !important; line-height: 1.4 !important; }}
+        </style>
+        <div class="processing-overlay">
+        <div class="processing-popup">
+        <span class="spinner">⏳</span>
+        <div class="msg">{L('after_confirm_click_msg')}</div>
+        </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+# ──────────────────────────────────────────────
 # 送信結果表示（スマホで見やすいようページ上部に表示）
 # ──────────────────────────────────────────────
 if "_submission_result" in st.session_state:
@@ -756,7 +788,7 @@ if st.session_state.get("do_submit", False):
     )
 
 if not st.session_state.get("do_submit", False):
-    # 画像あり時は「読み込み中」を表示して次のアクションをブロック
+    # 画像あり時は「画像登録中」を表示して画面反映まで入力をブロック
     from contextlib import nullcontext
 
     def _is_uploaded_file(v):
@@ -770,17 +802,60 @@ if not st.session_state.get("do_submit", False):
         + [f"interior_photo_{i}" for i in range(5)]
     )
     _has_files = any(_is_uploaded_file(st.session_state.get(k)) for k in _photo_keys)
-    # セッション内の任意のUploadedFileも検出（キー形式が変わった場合の保険）
     if not _has_files:
         for v in st.session_state.values():
             if _is_uploaded_file(v):
                 _has_files = True
                 break
-    _spinner_ctx = st.spinner(L("image_loading_msg")) if _has_files else nullcontext()
+
+    # 画像セットの署名（変更検知用）
+    def _file_signature():
+        parts = []
+        for k in _photo_keys:
+            f = st.session_state.get(k)
+            if _is_uploaded_file(f):
+                parts.append(f"{k}:{getattr(f, 'name', '')}:{getattr(f, 'size', 0)}")
+        return "|".join(parts)
+
+    _current_sig = _file_signature() if _has_files else ""
+    _displayed_sig = st.session_state.get("_images_displayed_sig", "")
+    _need_display = _has_files and _current_sig and _current_sig != _displayed_sig
+
+    # 画像反映前：全画面オーバーレイで入力をブロック
+    if _need_display:
+        st.markdown(
+            f"""
+            <style>
+            .img-reg-overlay {{
+                position: fixed !important; top: 0 !important; left: 0 !important; right: 0 !important; bottom: 0 !important;
+                z-index: 99999 !important; display: flex !important; align-items: center !important; justify-content: center !important;
+                background: rgba(0,0,0,0.6) !important; padding: 20px !important;
+            }}
+            .img-reg-popup {{
+                background: linear-gradient(135deg, #1565c0 0%, #0d47a1 100%) !important; color: #fff !important;
+                border-radius: 16px !important; padding: 36px 28px !important; text-align: center !important;
+                box-shadow: 0 8px 32px rgba(0,0,0,0.3) !important; max-width: 90% !important;
+            }}
+            .img-reg-popup .spinner {{ font-size: 48px !important; margin-bottom: 16px !important; display: block !important; }}
+            .img-reg-popup .msg {{ font-size: 18px !important; font-weight: bold !important; line-height: 1.5 !important; }}
+            </style>
+            <div class="img-reg-overlay">
+            <div class="img-reg-popup">
+            <span class="spinner">⏳</span>
+            <div class="msg">{L('image_registering_msg')}</div>
+            </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    if not _has_files:
+        st.session_state.pop("_images_displayed_sig", None)
+    _spinner_ctx = nullcontext()
 
     with _spinner_ctx:
-        if _has_files:
-            time.sleep(0.5)  # スピナーを確実に表示（画像処理中のブロック感を出す）
+        if _has_files and not st.session_state.get("_pending_confirm", False) and not _need_display:
+            time.sleep(0.3)
         st.caption("💡 " + L("session_hint"))
         # ──────────────────────────────────────────────
         # Draft（長時間入力対策：こまめに保存を推奨）
@@ -1004,6 +1079,11 @@ if not st.session_state.get("do_submit", False):
 
         st.divider()
 
+        # 画像反映完了後：オーバーレイを外すためrerun
+        if _need_display:
+            st.session_state["_images_displayed_sig"] = _current_sig
+            st.rerun()
+
 # ──────────────────────────────────────────────
 # Step 8: Confirm & Submit
 # ──────────────────────────────────────────────
@@ -1014,34 +1094,6 @@ if "confirm_mode" not in st.session_state:
     st.session_state.confirm_mode = False
 if "do_submit" not in st.session_state:
     st.session_state.do_submit = False
-
-# Confirm&Submit押下後すぐに「処理中」をポップアップ表示（スマホでも確実に見える位置）
-if st.session_state.get("_pending_confirm", False):
-    st.markdown(
-        f"""
-        <style>
-        .processing-overlay {{
-            position: fixed !important; top: 0 !important; left: 0 !important; right: 0 !important; bottom: 0 !important;
-            z-index: 99999 !important; display: flex !important; align-items: center !important; justify-content: center !important;
-            background: rgba(0,0,0,0.5) !important; padding: 20px !important;
-        }}
-        .processing-popup {{
-            background: linear-gradient(135deg, #1565c0 0%, #0d47a1 100%) !important; color: #fff !important;
-            border-radius: 16px !important; padding: 32px 28px !important; text-align: center !important;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.3) !important; max-width: 90% !important;
-        }}
-        .processing-popup .spinner {{ font-size: 48px !important; margin-bottom: 16px !important; display: block !important; }}
-        .processing-popup .msg {{ font-size: 18px !important; font-weight: bold !important; line-height: 1.4 !important; }}
-        </style>
-        <div class="processing-overlay">
-        <div class="processing-popup">
-        <span class="spinner">⏳</span>
-        <div class="msg">{L('after_confirm_click_msg')}</div>
-        </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
 
 # 編集に戻る
 if st.session_state.confirm_mode and st.button(L("back_edit"), use_container_width=True):
@@ -1328,29 +1380,28 @@ if st.session_state.get("_pending_confirm"):
         for e in errors:
             st.warning(e)
     else:
-        # 確認モードへ：データを保存して確認画面表示
+        # 確認モードへ：データを保存して確認画面表示（st.spinnerは使わず即時rerunで固まりを防ぐ）
         st.session_state["_pending_confirm"] = False
-        with st.spinner(L("processing_msg")):
-            st.session_state["_submit_data"] = {
-                "store_name": store_name,
-                "phone": phone,
-                "category": category,
-                "contact_name": contact_name,
-                "email": email,
-                "business_hours": business_hours,
-                "regular_holiday": regular_holiday,
-                "nearest_station": nearest_station,
-                "languages": languages,
-                "wifi": wifi,
-                "payment_methods": payment_methods,
-                "halal_level": halal_level,
-                "halal_level_display": halal_level,
-                "prep_transparency": prep_transparency,
-                "top_photos": top_photos,
-                "cert_photos": cert_photos,
-                "highlights": highlights,
-                "menus": menus,
-                "interior_photos": interior_photos,
-            }
-            st.session_state.confirm_mode = True
-            st.rerun()
+        st.session_state["_submit_data"] = {
+            "store_name": store_name,
+            "phone": phone,
+            "category": category,
+            "contact_name": contact_name,
+            "email": email,
+            "business_hours": business_hours,
+            "regular_holiday": regular_holiday,
+            "nearest_station": nearest_station,
+            "languages": languages,
+            "wifi": wifi,
+            "payment_methods": payment_methods,
+            "halal_level": halal_level,
+            "halal_level_display": halal_level,
+            "prep_transparency": prep_transparency,
+            "top_photos": top_photos,
+            "cert_photos": cert_photos,
+            "highlights": highlights,
+            "menus": menus,
+            "interior_photos": interior_photos,
+        }
+        st.session_state.confirm_mode = True
+        st.rerun()
