@@ -83,6 +83,7 @@ LABELS = {
         "invalid_email": "Please enter a valid email address.",
         "required_payment": "At least one payment method is required.",
         "required_top3": "All 3 Top Photos are required.",
+        "session_expired_photos": "Photo data was lost (session may have expired). Please go back and re-upload all photos.",
         "required_highlights": "At least 1 Highlight (photo, title, description) is required.",
         "required_cert": "At least 1 certification photo is required for the selected Halal level.",
         "invalid_format": "Invalid image format: {name}. Allowed: jpg, png, webp.",
@@ -128,6 +129,7 @@ LABELS = {
         "draft_auto": "Auto-save",
         "draft_auto_on": "Auto-save is ON",
         "manual_link": "Input Manual",
+        "session_hint": "Long input sessions may disconnect. Photos are automatically resized for optimal display.",
     },
     "ja": {
         "app_title": "ハラル対応レストラン 店舗情報登録",
@@ -195,6 +197,7 @@ LABELS = {
         "invalid_email": "有効なメールアドレスを入力してください。",
         "required_payment": "決済方法を1つ以上選択してください。",
         "required_top3": "TOP写真は3枚すべて必要です。",
+        "session_expired_photos": "写真データが失われました（セッション切れの可能性）。編集に戻り、写真を再アップロードしてください。",
         "required_highlights": "こだわりは最低1セット（写真・表題・説明）必要です。",
         "required_cert": "選択されたハラルレベルでは認証写真が1枚以上必要です。",
         "invalid_format": "無効な画像形式: {name}。jpg, png, webp のみ対応。",
@@ -240,6 +243,7 @@ LABELS = {
         "draft_auto": "自動保存",
         "draft_auto_on": "自動保存が有効です",
         "manual_link": "入力マニュアル",
+        "session_hint": "長時間の入力で画面が切れる場合があります。写真は自動で最適サイズに縮小されます。",
     },
 }
 
@@ -253,6 +257,62 @@ def L(key):
 # ──────────────────────────────────────────────
 ALLOWED_EXTENSIONS = {"jpg", "jpeg", "png", "webp"}
 MAX_FILE_SIZE = 10 * 1024 * 1024
+MAX_PREVIEW_PIXELS = 1500  # アップロード時に自動縮小（メモリ節約・クラッシュ防止）
+
+
+class CompressedImageFile:
+    """圧縮済み画像のファイル風ラッパー。メモリ使用量を削減。"""
+
+    def __init__(self, buf: io.BytesIO, original_name: str):
+        self._buf = buf
+        self.name = original_name
+        self.size = len(buf.getvalue())
+
+    def seek(self, pos: int = 0):
+        self._buf.seek(pos)
+
+    def read(self, size: int = -1):
+        return self._buf.read(size)
+
+    def tell(self):
+        return self._buf.tell()
+
+    def getvalue(self):
+        return self._buf.getvalue()
+
+
+def compress_uploaded_image(uploaded_file):
+    """アップロード画像を自動縮小・圧縮してメモリ節約。失敗時は元のファイルを返す。"""
+    if not uploaded_file:
+        return None
+    try:
+        uploaded_file.seek(0)
+        img = Image.open(uploaded_file)
+        img = fix_exif_rotation(img)
+        if img.mode in ("RGBA", "P"):
+            img = img.convert("RGB")
+        w, h = img.size
+        if w > MAX_PREVIEW_PIXELS or h > MAX_PREVIEW_PIXELS:
+            ratio = min(MAX_PREVIEW_PIXELS / w, MAX_PREVIEW_PIXELS / h)
+            new_w, new_h = int(w * ratio), int(h * ratio)
+            img = img.resize((new_w, new_h), Image.LANCZOS)
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=85, optimize=True)
+        buf.seek(0)
+        name = getattr(uploaded_file, "name", "photo.jpg")
+        if not name.lower().endswith((".jpg", ".jpeg")):
+            name = name.rsplit(".", 1)[0] + ".jpg" if "." in name else "photo.jpg"
+        return CompressedImageFile(buf, name)
+    except Exception:
+        uploaded_file.seek(0)
+        return uploaded_file  # 失敗時は元のファイルをそのまま使用
+
+
+def maybe_compress(file):
+    """圧縮可能なら圧縮版を返し、失敗時は元のファイルを返す。"""
+    if not file:
+        return None
+    return compress_uploaded_image(file)
 
 
 def fix_exif_rotation(img: Image.Image) -> Image.Image:
@@ -629,6 +689,50 @@ if st.session_state.get("do_submit", False):
     st.divider()
 
 if not st.session_state.get("do_submit", False):
+    st.caption("💡 " + L("session_hint"))
+    # ──────────────────────────────────────────────
+    # Draft（長時間入力対策：こまめに保存を推奨）
+    # ──────────────────────────────────────────────
+    draft_enabled = get_secret("DRAFT_ENABLED", "").lower() in ("true", "1", "yes")
+    if draft_enabled:
+        with st.expander(f"📋 {L('draft_section')}（{L('draft_save')} / {L('draft_load')}）", expanded=False):
+            note_text = L("draft_note")
+            st.markdown(
+                f"<div style='font-size:14px; color:#b71c1c; margin:8px 0; padding:10px; "
+                f"background:#ffebee; border-radius:6px;'>⚠️ {note_text}</div>",
+                unsafe_allow_html=True,
+            )
+            draft_name_input = st.text_input(
+                L("draft_name"),
+                value=st.session_state.get("store_name", ""),
+                key="draft_name_input",
+            )
+            col_save, col_load = st.columns(2)
+            with col_save:
+                if st.button(L("draft_save"), use_container_width=True, type="primary"):
+                    if draft_name_input.strip():
+                        saved = _save_draft(draft_name_input.strip())
+                        st.success(L("draft_saved").format(name=saved))
+                    else:
+                        st.warning(L("required_store"))
+            with col_load:
+                drafts = _drafts_list()
+                if drafts:
+                    chosen = st.selectbox(L("draft_select"), drafts, key="draft_choice", label_visibility="collapsed")
+                    load_col, del_col = st.columns(2)
+                    with load_col:
+                        if st.button(L("draft_load"), use_container_width=True):
+                            draft = _load_draft(chosen)
+                            if draft:
+                                _apply_draft(draft)
+                                st.rerun()
+                    with del_col:
+                        if st.button(L("draft_delete"), use_container_width=True):
+                            _delete_draft(chosen)
+                            st.rerun()
+                else:
+                    st.info(L("draft_none"))
+
     # ──────────────────────────────────────────────
     # Step 1: Basic Information
     # ──────────────────────────────────────────────
@@ -711,6 +815,7 @@ if not st.session_state.get("do_submit", False):
                 type=["jpg", "jpeg", "png", "webp"],
                 key=f"top_photo_{i}",
             )
+            f = maybe_compress(f)
             top_photos.append(f)
             if f:
                 display_image_with_orientation(f)
@@ -728,6 +833,7 @@ if not st.session_state.get("do_submit", False):
                 type=["jpg", "jpeg", "png", "webp"],
                 key=f"cert_photo_{i}",
             )
+            f = maybe_compress(f)
             cert_photos.append(f)
             if f:
                 display_image_with_orientation(f)
@@ -750,6 +856,7 @@ if not st.session_state.get("do_submit", False):
                 type=["jpg", "jpeg", "png", "webp"],
                 key=f"highlight_photo_{i}",
             )
+            h_photo = maybe_compress(h_photo)
             if h_photo:
                 display_image_with_orientation(h_photo)
             h_title = st.text_input(L("highlight_title"), key=f"highlight_title_{i}")
@@ -774,6 +881,7 @@ if not st.session_state.get("do_submit", False):
                 type=["jpg", "jpeg", "png", "webp"],
                 key=f"menu_photo_{i}",
             )
+            m_photo = maybe_compress(m_photo)
             if m_photo:
                 display_image_with_orientation(m_photo)
             m_name = st.text_input(L("menu_name"), key=f"menu_name_{i}")
@@ -797,62 +905,10 @@ if not st.session_state.get("do_submit", False):
                 type=["jpg", "jpeg", "png", "webp"],
                 key=f"interior_photo_{i}",
             )
+            f = maybe_compress(f)
             interior_photos.append(f)
             if f:
                 display_image_with_orientation(f)
-
-    st.divider()
-
-    # ──────────────────────────────────────────────
-    # Draft management (DRAFT_ENABLED=true で表示)
-    # ──────────────────────────────────────────────
-    draft_enabled = get_secret("DRAFT_ENABLED", "").lower() in ("true", "1", "yes")
-    if draft_enabled:
-        with st.expander(f"📋 {L('draft_section')}", expanded=False):
-            note_text = L("draft_note")
-            st.markdown(
-                f"<div style='font-size:16px; font-weight:bold; color:#b71c1c; "
-                f"margin:12px 0; padding:12px; background:#ffebee; border-radius:8px; "
-                f"border-left:4px solid #b71c1c;'>⚠️ {note_text}</div>",
-                unsafe_allow_html=True,
-            )
-            st.markdown("---")
-            st.markdown("**" + L("draft_save") + "**")
-            st.caption(L("draft_save_desc"))
-            draft_name_input = st.text_input(
-                L("draft_name"),
-                value=st.session_state.get("store_name", ""),
-                key="draft_name_input",
-            )
-            if st.button(L("draft_save"), use_container_width=True, type="primary"):
-                if draft_name_input.strip():
-                    saved = _save_draft(draft_name_input.strip())
-                    st.success(L("draft_saved").format(name=saved))
-                else:
-                    st.warning(L("required_store"))
-            st.divider()
-            st.markdown("**" + L("draft_load") + "**")
-            st.caption(L("draft_load_desc"))
-            drafts = _drafts_list()
-            if drafts:
-                chosen = st.selectbox(L("draft_select"), drafts, key="draft_choice")
-                col_load, col_del = st.columns(2)
-                with col_load:
-                    if st.button(L("draft_load"), use_container_width=True):
-                        draft = _load_draft(chosen)
-                        if draft:
-                            _apply_draft(draft)
-                            st.session_state["_draft_loaded_name"] = chosen
-                            st.rerun()
-                with col_del:
-                    if st.button(L("draft_delete"), use_container_width=True):
-                        _delete_draft(chosen)
-                        st.success(L("draft_deleted").format(name=chosen))
-                        st.rerun()
-                if st.session_state.pop("_draft_loaded_name", None):
-                    st.success(L("draft_loaded").format(name=chosen))
-            else:
-                st.info(L("draft_none"))
 
     st.divider()
 
@@ -898,17 +954,17 @@ if st.session_state.confirm_mode and not st.session_state.do_submit:
     submit_clicked = st.button(L("confirm_submit"), type="primary", use_container_width=True)
     if submit_clicked:
         st.markdown(
-            f"<div style='font-size:16px; font-weight:bold; color:#b71c1c; margin-top:12px; padding:14px; "
-            f"background:#ffebee; border-radius:8px; border-left:6px solid #b71c1c;'>"
-            f"⚠️ {L('after_submit_click_msg')}</div>",
+            f"<div style='font-size:15px; color:#1565c0; margin-top:12px; padding:14px; "
+            f"background:#e3f2fd; border-radius:8px; border-left:6px solid #1565c0;'>"
+            f"⏳ {L('after_submit_click_msg')}</div>",
             unsafe_allow_html=True,
         )
         st.session_state.do_submit = True
         st.rerun()
     st.markdown(
-        f"<div style='font-size:16px; font-weight:bold; color:#b71c1c; margin-top:12px; padding:14px; "
-        f"background:#ffebee; border-radius:8px; border-left:6px solid #b71c1c;'>"
-        f"⚠️ {L('after_submit_click_msg')}</div>",
+        f"<div style='font-size:15px; color:#1565c0; margin-top:12px; padding:14px; "
+        f"background:#e3f2fd; border-radius:8px; border-left:6px solid #1565c0;'>"
+        f"⏳ {L('after_submit_click_msg')}</div>",
         unsafe_allow_html=True,
     )
 
@@ -918,28 +974,33 @@ if st.session_state.confirm_mode and not st.session_state.do_submit:
 if st.session_state.do_submit:
     data = st.session_state.get("_submit_data", {})
     if data:
-        with st.spinner(L("sending_msg")):
-            store_name = data["store_name"]
-            phone = data["phone"]
-            category = data.get("category", "")
-            contact_name = data["contact_name"]
-            email = data["email"]
-            business_hours = data["business_hours"]
-            regular_holiday = data["regular_holiday"]
-            nearest_station = data["nearest_station"]
-            languages = data["languages"]
-            wifi = data["wifi"]
-            payment_methods = data["payment_methods"]
-            halal_level = data["halal_level"]
-            prep_transparency = data["prep_transparency"]
-            top_photos = data["top_photos"]
-            cert_photos = data["cert_photos"]
-            highlights = data["highlights"]
-            menus = data["menus"]
-            interior_photos = data["interior_photos"]
+        try:
+            with st.spinner(L("sending_msg")):
+                store_name = data.get("store_name", "")
+                phone = data.get("phone", "")
+                category = data.get("category", "")
+                contact_name = data.get("contact_name", "")
+                email = data.get("email", "")
+                business_hours = data.get("business_hours", "")
+                regular_holiday = data.get("regular_holiday", "")
+                nearest_station = data.get("nearest_station", "")
+                languages = data.get("languages", [])
+                wifi = data.get("wifi", "")
+                payment_methods = data.get("payment_methods", [])
+                halal_level = data.get("halal_level", "")
+                prep_transparency = data.get("prep_transparency", "")
+                top_photos = data.get("top_photos") or []
+                cert_photos = data.get("cert_photos") or []
+                highlights = data.get("highlights") or []
+                menus = data.get("menus") or []
+                interior_photos = data.get("interior_photos") or []
 
-            # 送信処理（既存ロジック）
-            store_slug = slugify(store_name, allow_unicode=False) or "store"
+                # 必須データのチェック（セッション切れ等でファイルが無効化された場合）
+                if not top_photos or len(top_photos) < 3:
+                    raise ValueError(L("session_expired_photos"))
+
+                # 送信処理（既存ロジック）
+                store_slug = slugify(store_name, allow_unicode=False) or "store"
             zip_buffer = io.BytesIO()
             image_manifest = []
 
@@ -1052,13 +1113,17 @@ if st.session_state.do_submit:
                             "data": base64.b64encode(img_bytes).decode("ascii"),
                         })
 
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            submission_dir = os.path.join("submissions", f"{timestamp}_{store_slug}")
-            os.makedirs(os.path.join(submission_dir, "images"), exist_ok=True)
-            zip_buffer.seek(0)
-            with zipfile.ZipFile(zip_buffer, "r") as zf:
-                zf.extractall(submission_dir)
-            zip_buffer.seek(0)
+            # ローカル保存（Streamlit Cloud等では書き込み不可のためスキップ）
+            try:
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                submission_dir = os.path.join("submissions", f"{timestamp}_{store_slug}")
+                os.makedirs(os.path.join(submission_dir, "images"), exist_ok=True)
+                zip_buffer.seek(0)
+                with zipfile.ZipFile(zip_buffer, "r") as zf:
+                    zf.extractall(submission_dir)
+                zip_buffer.seek(0)
+            except OSError:
+                pass  # クラウド環境ではスキップ
 
             active_url = webhook_url.strip()
             if active_url:
@@ -1076,10 +1141,15 @@ if st.session_state.do_submit:
             else:
                 st.session_state["_submission_result"] = "success"
 
-        st.session_state.confirm_mode = False
-        st.session_state.do_submit = False
-        if "_submit_data" in st.session_state:
-            del st.session_state["_submit_data"]
+        except Exception as exc:
+            err_msg = str(exc)[:300] if exc else "Unknown error"
+            st.session_state["_submission_result"] = "error"
+            st.session_state["_submission_message"] = L("gs_error").format(err=err_msg)
+        finally:
+            st.session_state.confirm_mode = False
+            st.session_state.do_submit = False
+            if "_submit_data" in st.session_state:
+                del st.session_state["_submit_data"]
         st.rerun()
     st.stop()
 
