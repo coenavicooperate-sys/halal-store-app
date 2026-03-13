@@ -132,6 +132,7 @@ LABELS = {
         "draft_auto_on": "Auto-save is ON",
         "manual_link": "Input Manual",
         "session_hint": "Long input sessions may disconnect. Photos are automatically resized for optimal display.",
+        "image_loading_msg": "Loading images. Please wait. Do not interact.",
     },
     "ja": {
         "app_title": "ハラル対応レストラン 店舗情報登録",
@@ -248,6 +249,7 @@ LABELS = {
         "draft_auto_on": "自動保存が有効です",
         "manual_link": "入力マニュアル",
         "session_hint": "長時間の入力で画面が切れる場合があります。写真は自動で最適サイズに縮小されます。",
+        "image_loading_msg": "画像を読み込み中です。少々お待ちください。",
     },
 }
 
@@ -703,256 +705,269 @@ if "_submission_result" in st.session_state:
     st.stop()
 
 # ──────────────────────────────────────────────
-# 送信処理中：画面全体で「送信中」を強調表示（確認画面と明確に区別）
+# 送信処理中：スマホで確実に見えるよう画面上部に固定表示
 # ──────────────────────────────────────────────
 if st.session_state.get("do_submit", False):
     st.markdown(
         f"""
         <style>
         @keyframes spin {{ 0% {{ transform: rotate(0deg); }} 100% {{ transform: rotate(360deg); }} }}
-        @keyframes pulse {{ 0%, 100% {{ opacity: 1; }} 50% {{ opacity: 0.7; }} }}
-        .sending-overlay {{
-            text-align: center; padding: 48px 24px; margin: 24px 0;
-            background: linear-gradient(135deg, #0d47a1 0%, #1565c0 50%, #1976d2 100%);
-            border-radius: 16px; color: #fff; box-shadow: 0 8px 32px rgba(13,71,161,0.5);
-            border: 4px solid #42a5f5; animation: pulse 1.5s ease-in-out infinite;
+        @keyframes pulse {{ 0%, 100% {{ opacity: 1; }} 50% {{ opacity: 0.8; }} }}
+        .sending-fixed {{
+            position: fixed !important; top: 0 !important; left: 0 !important; right: 0 !important;
+            z-index: 99999 !important; text-align: center; padding: 32px 16px 24px !important;
+            background: linear-gradient(135deg, #0d47a1 0%, #1565c0 50%, #1976d2 100%) !important;
+            color: #fff !important; box-shadow: 0 4px 20px rgba(0,0,0,0.3) !important;
+            animation: pulse 1.5s ease-in-out infinite;
         }}
-        .sending-spinner {{ display: inline-block; font-size: 48px; animation: spin 1s linear infinite; margin-bottom: 16px; }}
-        .sending-title {{ font-size: 32px; font-weight: bold; margin-bottom: 12px; letter-spacing: 0.1em; }}
-        .sending-sub {{ font-size: 18px; opacity: 0.95; }}
+        .sending-spinner {{ display: inline-block; font-size: 40px; animation: spin 1s linear infinite; margin-bottom: 12px; }}
+        .sending-title {{ font-size: 24px; font-weight: bold; margin-bottom: 8px; }}
+        .sending-sub {{ font-size: 15px; opacity: 0.95; }}
+        .sending-spacer {{ height: 140px; }}
         </style>
-        <div class="sending-overlay">
+        <div class="sending-fixed">
         <div class="sending-spinner">⏳</div>
         <div class="sending-title">{L('sending_banner')}</div>
         <div class="sending-sub">{L('sending_banner_sub')}</div>
         </div>
+        <div class="sending-spacer"></div>
         """,
         unsafe_allow_html=True,
     )
 
 if not st.session_state.get("do_submit", False):
-    st.caption("💡 " + L("session_hint"))
-    # ──────────────────────────────────────────────
-    # Draft（長時間入力対策：こまめに保存を推奨）
-    # ──────────────────────────────────────────────
-    draft_enabled = get_secret("DRAFT_ENABLED", "").lower() in ("true", "1", "yes")
-    if draft_enabled:
-        with st.expander(f"📋 {L('draft_section')}（{L('draft_save')} / {L('draft_load')}）", expanded=False):
-            note_text = L("draft_note")
-            st.markdown(
-                f"<div style='font-size:14px; color:#b71c1c; margin:8px 0; padding:10px; "
-                f"background:#ffebee; border-radius:6px;'>⚠️ {note_text}</div>",
-                unsafe_allow_html=True,
-            )
-            draft_name_input = st.text_input(
-                L("draft_name"),
-                value=st.session_state.get("store_name", ""),
-                key="draft_name_input",
-            )
-            col_save, col_load = st.columns(2)
-            with col_save:
-                if st.button(L("draft_save"), use_container_width=True, type="primary"):
-                    if draft_name_input.strip():
-                        saved = _save_draft(draft_name_input.strip())
-                        st.success(L("draft_saved").format(name=saved))
-                    else:
-                        st.warning(L("required_store"))
-            with col_load:
-                drafts = _drafts_list()
-                if drafts:
-                    chosen = st.selectbox(L("draft_select"), drafts, key="draft_choice", label_visibility="collapsed")
-                    load_col, del_col = st.columns(2)
-                    with load_col:
-                        if st.button(L("draft_load"), use_container_width=True):
-                            draft = _load_draft(chosen)
-                            if draft:
-                                _apply_draft(draft)
+    # 画像あり時は「読み込み中」を表示して次のアクションをブロック
+    from contextlib import nullcontext
+    _has_files = any(st.session_state.get(f"top_photo_{i}") for i in range(3))
+    _has_files = _has_files or any(st.session_state.get(f"cert_photo_{i}") for i in range(3))
+    _has_files = _has_files or any(st.session_state.get(f"highlight_photo_{i}") for i in range(3))
+    _has_files = _has_files or any(st.session_state.get(f"menu_photo_{i}") for i in range(3))
+    _has_files = _has_files or any(st.session_state.get(f"interior_photo_{i}") for i in range(5))
+    _spinner_ctx = st.spinner(L("image_loading_msg")) if _has_files else nullcontext()
+
+    with _spinner_ctx:
+        st.caption("💡 " + L("session_hint"))
+        # ──────────────────────────────────────────────
+        # Draft（長時間入力対策：こまめに保存を推奨）
+        # ──────────────────────────────────────────────
+        draft_enabled = get_secret("DRAFT_ENABLED", "").lower() in ("true", "1", "yes")
+        if draft_enabled:
+            with st.expander(f"📋 {L('draft_section')}（{L('draft_save')} / {L('draft_load')}）", expanded=False):
+                note_text = L("draft_note")
+                st.markdown(
+                    f"<div style='font-size:14px; color:#b71c1c; margin:8px 0; padding:10px; "
+                    f"background:#ffebee; border-radius:6px;'>⚠️ {note_text}</div>",
+                    unsafe_allow_html=True,
+                )
+                draft_name_input = st.text_input(
+                    L("draft_name"),
+                    value=st.session_state.get("store_name", ""),
+                    key="draft_name_input",
+                )
+                col_save, col_load = st.columns(2)
+                with col_save:
+                    if st.button(L("draft_save"), use_container_width=True, type="primary"):
+                        if draft_name_input.strip():
+                            saved = _save_draft(draft_name_input.strip())
+                            st.success(L("draft_saved").format(name=saved))
+                        else:
+                            st.warning(L("required_store"))
+                with col_load:
+                    drafts = _drafts_list()
+                    if drafts:
+                        chosen = st.selectbox(L("draft_select"), drafts, key="draft_choice", label_visibility="collapsed")
+                        load_col, del_col = st.columns(2)
+                        with load_col:
+                            if st.button(L("draft_load"), use_container_width=True):
+                                draft = _load_draft(chosen)
+                                if draft:
+                                    _apply_draft(draft)
+                                    st.rerun()
+                        with del_col:
+                            if st.button(L("draft_delete"), use_container_width=True):
+                                _delete_draft(chosen)
                                 st.rerun()
-                    with del_col:
-                        if st.button(L("draft_delete"), use_container_width=True):
-                            _delete_draft(chosen)
-                            st.rerun()
-                else:
-                    st.info(L("draft_none"))
+                    else:
+                        st.info(L("draft_none"))
 
-    # ──────────────────────────────────────────────
-    # Step 1: Basic Information
-    # ──────────────────────────────────────────────
-    st.header(L("step1"))
-    store_name = st.text_input(L("store_name"), key="store_name")
-    phone = st.text_input(L("phone"), key="phone")
-    category = st.selectbox(
-        L("category"),
-        options=CATEGORY_OPTIONS,
-        key="category",
-    )
-    contact_name = st.text_input(L("contact"), key="contact_name")
-    email = st.text_input(L("email"), key="email")
+        # ──────────────────────────────────────────────
+        # Step 1: Basic Information
+        # ──────────────────────────────────────────────
+        st.header(L("step1"))
+        store_name = st.text_input(L("store_name"), key="store_name")
+        phone = st.text_input(L("phone"), key="phone")
+        category = st.selectbox(
+            L("category"),
+            options=CATEGORY_OPTIONS,
+            key="category",
+        )
+        contact_name = st.text_input(L("contact"), key="contact_name")
+        email = st.text_input(L("email"), key="email")
 
-    st.divider()
+        st.divider()
 
-    # ──────────────────────────────────────────────
-    # Step 2: Business Information
-    # ──────────────────────────────────────────────
-    st.header(L("step2"))
-    business_hours = st.text_area(L("business_hours"), key="business_hours")
-    regular_holiday = st.text_input(L("regular_holiday"), key="regular_holiday")
-    nearest_station = st.text_input(L("nearest_station"), key="nearest_station")
+        # ──────────────────────────────────────────────
+        # Step 2: Business Information
+        # ──────────────────────────────────────────────
+        st.header(L("step2"))
+        business_hours = st.text_area(L("business_hours"), key="business_hours")
+        regular_holiday = st.text_input(L("regular_holiday"), key="regular_holiday")
+        nearest_station = st.text_input(L("nearest_station"), key="nearest_station")
 
-    st.divider()
+        st.divider()
 
-    # ──────────────────────────────────────────────
-    # Step 3: Facilities & Services
-    # ──────────────────────────────────────────────
-    st.header(L("step3"))
+        # ──────────────────────────────────────────────
+        # Step 3: Facilities & Services
+        # ──────────────────────────────────────────────
+        st.header(L("step3"))
 
-    # 日本に来るムスリム観光客に多い言語（6つ）
-    language_options = ["Arabic", "Chinese", "English", "Indonesian", "Malay", "Urdu"]
-    languages = st.multiselect(L("languages_available"), language_options, key="languages")
+        # 日本に来るムスリム観光客に多い言語（6つ）
+        language_options = ["Arabic", "Chinese", "English", "Indonesian", "Malay", "Urdu"]
+        languages = st.multiselect(L("languages_available"), language_options, key="languages")
 
-    wifi_options = [L("wifi_available"), L("wifi_not_available")]
-    wifi = st.radio(L("wifi"), wifi_options, key="wifi_radio", horizontal=True)
+        wifi_options = [L("wifi_available"), L("wifi_not_available")]
+        wifi = st.radio(L("wifi"), wifi_options, key="wifi_radio", horizontal=True)
 
-    # 観光客向け（Suica/PASMO等の国内決済は除外）
-    payment_options = [
-        "Cash", "Visa", "Mastercard", "JCB", "American Express",
-        "Alipay", "WeChat Pay", "UnionPay", "Apple Pay", "Google Pay", "Other",
-    ]
-    st.caption(L("required_payment"))
-    payment_methods = st.multiselect(L("payment_methods"), payment_options, key="payments")
+        # 観光客向け（Suica/PASMO等の国内決済は除外）
+        payment_options = [
+            "Cash", "Visa", "Mastercard", "JCB", "American Express",
+            "Alipay", "WeChat Pay", "UnionPay", "Apple Pay", "Google Pay", "Other",
+        ]
+        st.caption(L("required_payment"))
+        payment_methods = st.multiselect(L("payment_methods"), payment_options, key="payments")
 
-    halal_options = [
-        L("halal_full"),
-        L("halal_muslim_friendly"),
-        L("halal_menu"),
-        L("halal_no_pork"),
-        L("halal_vegan"),
-    ]
-    halal_level = st.radio(L("halal_level"), halal_options, key="halal_level_radio")
+        halal_options = [
+            L("halal_full"),
+            L("halal_muslim_friendly"),
+            L("halal_menu"),
+            L("halal_no_pork"),
+            L("halal_vegan"),
+        ]
+        halal_level = st.radio(L("halal_level"), halal_options, key="halal_level_radio")
 
-    prep_options = [
-        L("prep_separate_kitchen"),
-        L("prep_separate_utensils"),
-        L("prep_dedicated_area"),
-        L("prep_same_kitchen"),
-        L("prep_unknown"),
-    ]
-    prep_transparency = st.radio(L("prep_transparency"), prep_options, key="prep_transparency_radio")
+        prep_options = [
+            L("prep_separate_kitchen"),
+            L("prep_separate_utensils"),
+            L("prep_dedicated_area"),
+            L("prep_same_kitchen"),
+            L("prep_unknown"),
+        ]
+        prep_transparency = st.radio(L("prep_transparency"), prep_options, key="prep_transparency_radio")
 
-    st.divider()
+        st.divider()
 
-    # ──────────────────────────────────────────────
-    # Step 4: Photo Upload
-    # ──────────────────────────────────────────────
-    st.header(L("step4"))
+        # ──────────────────────────────────────────────
+        # Step 4: Photo Upload
+        # ──────────────────────────────────────────────
+        st.header(L("step4"))
 
-    st.subheader(L("top_photos"))
-    st.markdown(f"**📐 {L('recommended_top')}**")
-    top_cols = st.columns(3)
-    top_photos = []
-    for i in range(3):
-        with top_cols[i]:
-            f = st.file_uploader(
-                L("top_n").format(n=i + 1),
-                type=["jpg", "jpeg", "png", "webp"],
-                key=f"top_photo_{i}",
-            )
-            f = maybe_compress(f, f"comp_top_{i}")
-            top_photos.append(f)
-            if f:
-                display_image_cached(f, f"comp_top_{i}")
+        st.subheader(L("top_photos"))
+        st.markdown(f"**📐 {L('recommended_top')}**")
+        top_cols = st.columns(3)
+        top_photos = []
+        for i in range(3):
+            with top_cols[i]:
+                f = st.file_uploader(
+                    L("top_n").format(n=i + 1),
+                    type=["jpg", "jpeg", "png", "webp"],
+                    key=f"top_photo_{i}",
+                )
+                f = maybe_compress(f, f"comp_top_{i}")
+                top_photos.append(f)
+                if f:
+                    display_image_cached(f, f"comp_top_{i}")
 
-    st.subheader(L("cert_photos"))
-    st.markdown(f"**📐 {L('recommended_vert')}**")
-    if halal_level == L("halal_full"):
-        st.info(L("cert_required"))
-    cert_photos = []
-    cert_cols = st.columns(3)
-    for i in range(3):
-        with cert_cols[i]:
-            f = st.file_uploader(
-                L("cert_n").format(n=i + 1),
-                type=["jpg", "jpeg", "png", "webp"],
-                key=f"cert_photo_{i}",
-            )
-            f = maybe_compress(f, f"comp_cert_{i}")
-            cert_photos.append(f)
-            if f:
-                display_image_cached(f, f"comp_cert_{i}")
+        st.subheader(L("cert_photos"))
+        st.markdown(f"**📐 {L('recommended_vert')}**")
+        if halal_level == L("halal_full"):
+            st.info(L("cert_required"))
+        cert_photos = []
+        cert_cols = st.columns(3)
+        for i in range(3):
+            with cert_cols[i]:
+                f = st.file_uploader(
+                    L("cert_n").format(n=i + 1),
+                    type=["jpg", "jpeg", "png", "webp"],
+                    key=f"cert_photo_{i}",
+                )
+                f = maybe_compress(f, f"comp_cert_{i}")
+                cert_photos.append(f)
+                if f:
+                    display_image_cached(f, f"comp_cert_{i}")
 
-    st.divider()
+        st.divider()
 
-    # ──────────────────────────────────────────────
-    # Step 5: Highlights
-    # ──────────────────────────────────────────────
-    st.header(L("step5"))
-    st.caption(L("highlights_min"))
-    st.markdown(f"**📐 {L('recommended_vert')}**")
-    highlight_cols = st.columns(3)
-    highlights = []
-    for i in range(3):
-        with highlight_cols[i]:
-            st.markdown(f"**{L('highlight_n').format(n=i+1)}**")
-            h_photo = st.file_uploader(
-                L("highlight_photo"),
-                type=["jpg", "jpeg", "png", "webp"],
-                key=f"highlight_photo_{i}",
-            )
-            h_photo = maybe_compress(h_photo, f"comp_hl_{i}")
-            if h_photo:
-                display_image_cached(h_photo, f"comp_hl_{i}")
-            h_title = st.text_input(L("highlight_title"), key=f"highlight_title_{i}")
-            h_desc = st.text_area(L("highlight_desc"), key=f"highlight_desc_{i}")
-            highlights.append({"photo": h_photo, "title": h_title, "description": h_desc})
+        # ──────────────────────────────────────────────
+        # Step 5: Highlights
+        # ──────────────────────────────────────────────
+        st.header(L("step5"))
+        st.caption(L("highlights_min"))
+        st.markdown(f"**📐 {L('recommended_vert')}**")
+        highlight_cols = st.columns(3)
+        highlights = []
+        for i in range(3):
+            with highlight_cols[i]:
+                st.markdown(f"**{L('highlight_n').format(n=i+1)}**")
+                h_photo = st.file_uploader(
+                    L("highlight_photo"),
+                    type=["jpg", "jpeg", "png", "webp"],
+                    key=f"highlight_photo_{i}",
+                )
+                h_photo = maybe_compress(h_photo, f"comp_hl_{i}")
+                if h_photo:
+                    display_image_cached(h_photo, f"comp_hl_{i}")
+                h_title = st.text_input(L("highlight_title"), key=f"highlight_title_{i}")
+                h_desc = st.text_area(L("highlight_desc"), key=f"highlight_desc_{i}")
+                highlights.append({"photo": h_photo, "title": h_title, "description": h_desc})
 
-    st.divider()
+        st.divider()
 
-    # ──────────────────────────────────────────────
-    # Step 6: Menu Information
-    # ──────────────────────────────────────────────
-    st.header(L("step6"))
-    st.caption(L("menu_min"))
-    st.markdown(f"**📐 {L('recommended_vert')}**")
-    menu_cols = st.columns(3)
-    menus = []
-    for i in range(3):
-        with menu_cols[i]:
-            st.markdown(f"**{L('menu_n').format(n=i+1)}**")
-            m_photo = st.file_uploader(
-                L("menu_photo"),
-                type=["jpg", "jpeg", "png", "webp"],
-                key=f"menu_photo_{i}",
-            )
-            m_photo = maybe_compress(m_photo, f"comp_menu_{i}")
-            if m_photo:
-                display_image_cached(m_photo, f"comp_menu_{i}")
-            m_name = st.text_input(L("menu_name"), key=f"menu_name_{i}")
-            m_desc = st.text_area(L("menu_desc"), key=f"menu_desc_{i}")
-            menus.append({"photo": m_photo, "name": m_name, "description": m_desc})
+        # ──────────────────────────────────────────────
+        # Step 6: Menu Information
+        # ──────────────────────────────────────────────
+        st.header(L("step6"))
+        st.caption(L("menu_min"))
+        st.markdown(f"**📐 {L('recommended_vert')}**")
+        menu_cols = st.columns(3)
+        menus = []
+        for i in range(3):
+            with menu_cols[i]:
+                st.markdown(f"**{L('menu_n').format(n=i+1)}**")
+                m_photo = st.file_uploader(
+                    L("menu_photo"),
+                    type=["jpg", "jpeg", "png", "webp"],
+                    key=f"menu_photo_{i}",
+                )
+                m_photo = maybe_compress(m_photo, f"comp_menu_{i}")
+                if m_photo:
+                    display_image_cached(m_photo, f"comp_menu_{i}")
+                m_name = st.text_input(L("menu_name"), key=f"menu_name_{i}")
+                m_desc = st.text_area(L("menu_desc"), key=f"menu_desc_{i}")
+                menus.append({"photo": m_photo, "name": m_name, "description": m_desc})
 
-    st.divider()
+        st.divider()
 
-    # ──────────────────────────────────────────────
-    # Step 7: Interior / Exterior Photos
-    # ──────────────────────────────────────────────
-    st.header(L("step7"))
-    st.caption(L("interior_min"))
-    st.markdown(f"**📐 {L('recommended_vert')}**")
-    interior_photos = []
-    int_cols = st.columns(5)
-    for i in range(5):
-        with int_cols[i]:
-            f = st.file_uploader(
-                L("interior_n").format(n=i + 1),
-                type=["jpg", "jpeg", "png", "webp"],
-                key=f"interior_photo_{i}",
-            )
-            f = maybe_compress(f, f"comp_int_{i}")
-            interior_photos.append(f)
-            if f:
-                display_image_cached(f, f"comp_int_{i}")
+        # ──────────────────────────────────────────────
+        # Step 7: Interior / Exterior Photos
+        # ──────────────────────────────────────────────
+        st.header(L("step7"))
+        st.caption(L("interior_min"))
+        st.markdown(f"**📐 {L('recommended_vert')}**")
+        interior_photos = []
+        int_cols = st.columns(5)
+        for i in range(5):
+            with int_cols[i]:
+                f = st.file_uploader(
+                    L("interior_n").format(n=i + 1),
+                    type=["jpg", "jpeg", "png", "webp"],
+                    key=f"interior_photo_{i}",
+                )
+                f = maybe_compress(f, f"comp_int_{i}")
+                interior_photos.append(f)
+                if f:
+                    display_image_cached(f, f"comp_int_{i}")
 
-    st.divider()
+        st.divider()
 
 # ──────────────────────────────────────────────
 # Step 8: Confirm & Submit
@@ -1050,145 +1065,145 @@ if st.session_state.do_submit:
 
                 # 送信処理（既存ロジック）
                 store_slug = slugify(store_name, allow_unicode=False) or "store"
-            zip_buffer = io.BytesIO()
-            image_manifest = []
+                zip_buffer = io.BytesIO()
+                image_manifest = []
 
-            with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
-                processed_tops = []
-                for i, f in enumerate(top_photos):
-                    f.seek(0)
-                    img = process_top_photo(f)
-                    processed_tops.append(img)
-                    fname = f"{store_slug}_top_{i+1}.webp"
-                    zf.writestr(f"{store_slug}/images/{fname}", image_to_webp_bytes(img))
-                    image_manifest.append({"type": "top", "file": fname})
-
-                thumb = generate_thumbnail(processed_tops)
-                thumb_name = f"{store_slug}_thumb.webp"
-                zf.writestr(f"{store_slug}/images/{thumb_name}", image_to_webp_bytes(thumb))
-                image_manifest.append({"type": "thumbnail", "file": thumb_name})
-
-                for i, f in enumerate(cert_photos):
-                    if f:
+                with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+                    processed_tops = []
+                    for i, f in enumerate(top_photos):
                         f.seek(0)
-                        img = process_cert_photo(f)
-                        fname = f"{store_slug}_cert_{i+1}.webp"
+                        img = process_top_photo(f)
+                        processed_tops.append(img)
+                        fname = f"{store_slug}_top_{i+1}.webp"
                         zf.writestr(f"{store_slug}/images/{fname}", image_to_webp_bytes(img))
-                        image_manifest.append({"type": "certification", "file": fname})
+                        image_manifest.append({"type": "top", "file": fname})
 
-                commitment_data = []
-                for i, h in enumerate(highlights):
-                    if h["photo"] and h["title"].strip() and h["description"].strip():
-                        h["photo"].seek(0)
-                        img = process_highlight_photo(h["photo"])
-                        fname = f"{store_slug}_commitment_{i+1}.webp"
-                        zf.writestr(f"{store_slug}/images/{fname}", image_to_webp_bytes(img))
-                        image_manifest.append({"type": "commitment", "file": fname})
-                        commitment_data.append({
-                            "title": h["title"],
-                            "description": h["description"],
-                            "image": fname,
-                        })
+                    thumb = generate_thumbnail(processed_tops)
+                    thumb_name = f"{store_slug}_thumb.webp"
+                    zf.writestr(f"{store_slug}/images/{thumb_name}", image_to_webp_bytes(thumb))
+                    image_manifest.append({"type": "thumbnail", "file": thumb_name})
 
-                menu_data = []
-                for i, m in enumerate(menus):
-                    if m["photo"] and m["name"].strip():
-                        m["photo"].seek(0)
-                        img = process_menu_photo(m["photo"])
-                        fname = f"{store_slug}_menu_{i+1}.webp"
-                        zf.writestr(f"{store_slug}/images/{fname}", image_to_webp_bytes(img))
-                        image_manifest.append({"type": "menu", "file": fname})
-                        menu_data.append({
-                            "name": m["name"],
-                            "description": m["description"],
-                            "image": fname,
-                        })
+                    for i, f in enumerate(cert_photos):
+                        if f:
+                            f.seek(0)
+                            img = process_cert_photo(f)
+                            fname = f"{store_slug}_cert_{i+1}.webp"
+                            zf.writestr(f"{store_slug}/images/{fname}", image_to_webp_bytes(img))
+                            image_manifest.append({"type": "certification", "file": fname})
 
-                for i, f in enumerate(interior_photos):
-                    if f:
-                        f.seek(0)
-                        img = process_interior_photo(f)
-                        fname = f"{store_slug}_interior_{i+1}.webp"
-                        zf.writestr(f"{store_slug}/images/{fname}", image_to_webp_bytes(img))
-                        image_manifest.append({"type": "interior", "file": fname})
+                    commitment_data = []
+                    for i, h in enumerate(highlights):
+                        if h["photo"] and h["title"].strip() and h["description"].strip():
+                            h["photo"].seek(0)
+                            img = process_highlight_photo(h["photo"])
+                            fname = f"{store_slug}_commitment_{i+1}.webp"
+                            zf.writestr(f"{store_slug}/images/{fname}", image_to_webp_bytes(img))
+                            image_manifest.append({"type": "commitment", "file": fname})
+                            commitment_data.append({
+                                "title": h["title"],
+                                "description": h["description"],
+                                "image": fname,
+                            })
 
-                halal_key_map = {
-                    L("halal_full"): "fully_halal_certified",
-                    L("halal_muslim_friendly"): "muslim_friendly",
-                    L("halal_menu"): "halal_menu_available",
-                    L("halal_no_pork"): "no_pork_no_alcohol",
-                    L("halal_vegan"): "vegan_vegetarian",
-                }
-                prep_key_map = {
-                    L("prep_separate_kitchen"): "separate_kitchen",
-                    L("prep_separate_utensils"): "separate_utensils",
-                    L("prep_dedicated_area"): "dedicated_halal_cooking_area",
-                    L("prep_same_kitchen"): "same_kitchen_carefully_managed",
-                    L("prep_unknown"): "unknown",
-                }
-                wifi_val = wifi == L("wifi_available")
+                    menu_data = []
+                    for i, m in enumerate(menus):
+                        if m["photo"] and m["name"].strip():
+                            m["photo"].seek(0)
+                            img = process_menu_photo(m["photo"])
+                            fname = f"{store_slug}_menu_{i+1}.webp"
+                            zf.writestr(f"{store_slug}/images/{fname}", image_to_webp_bytes(img))
+                            image_manifest.append({"type": "menu", "file": fname})
+                            menu_data.append({
+                                "name": m["name"],
+                                "description": m["description"],
+                                "image": fname,
+                            })
 
-                data_json = {
-                    "store_name": store_name,
-                    "phone": phone,
-                    "category": category,
-                    "contact_name": contact_name,
-                    "email": email,
-                    "business_hours": business_hours,
-                    "regular_holiday": regular_holiday,
-                    "nearest_station": nearest_station,
-                    "languages": languages,
-                    "wifi": wifi_val,
-                    "payment_methods": payment_methods,
-                    "halal_level": halal_key_map.get(halal_level, halal_level),
-                    "preparation_transparency": prep_key_map.get(prep_transparency, prep_transparency),
-                    "commitments": commitment_data,
-                    "menus": menu_data,
-                    "images": image_manifest,
-                    "display_language": st.session_state.lang,
-                }
-                json_bytes = json.dumps(data_json, ensure_ascii=False, indent=2).encode("utf-8")
-                zf.writestr(f"{store_slug}/data.json", json_bytes)
+                    for i, f in enumerate(interior_photos):
+                        if f:
+                            f.seek(0)
+                            img = process_interior_photo(f)
+                            fname = f"{store_slug}_interior_{i+1}.webp"
+                            zf.writestr(f"{store_slug}/images/{fname}", image_to_webp_bytes(img))
+                            image_manifest.append({"type": "interior", "file": fname})
 
-            gs_images = []
-            zip_buffer.seek(0)
-            with zipfile.ZipFile(zip_buffer, "r") as zf_read:
-                for entry in zf_read.namelist():
-                    if entry.endswith(".webp"):
-                        img_bytes = zf_read.read(entry)
-                        fname = entry.rsplit("/", 1)[-1]
-                        gs_images.append({
-                            "filename": fname,
-                            "data": base64.b64encode(img_bytes).decode("ascii"),
-                        })
+                    halal_key_map = {
+                        L("halal_full"): "fully_halal_certified",
+                        L("halal_muslim_friendly"): "muslim_friendly",
+                        L("halal_menu"): "halal_menu_available",
+                        L("halal_no_pork"): "no_pork_no_alcohol",
+                        L("halal_vegan"): "vegan_vegetarian",
+                    }
+                    prep_key_map = {
+                        L("prep_separate_kitchen"): "separate_kitchen",
+                        L("prep_separate_utensils"): "separate_utensils",
+                        L("prep_dedicated_area"): "dedicated_halal_cooking_area",
+                        L("prep_same_kitchen"): "same_kitchen_carefully_managed",
+                        L("prep_unknown"): "unknown",
+                    }
+                    wifi_val = wifi == L("wifi_available")
 
-            # ローカル保存（Streamlit Cloud等では書き込み不可のためスキップ）
-            try:
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                submission_dir = os.path.join("submissions", f"{timestamp}_{store_slug}")
-                os.makedirs(os.path.join(submission_dir, "images"), exist_ok=True)
+                    data_json = {
+                        "store_name": store_name,
+                        "phone": phone,
+                        "category": category,
+                        "contact_name": contact_name,
+                        "email": email,
+                        "business_hours": business_hours,
+                        "regular_holiday": regular_holiday,
+                        "nearest_station": nearest_station,
+                        "languages": languages,
+                        "wifi": wifi_val,
+                        "payment_methods": payment_methods,
+                        "halal_level": halal_key_map.get(halal_level, halal_level),
+                        "preparation_transparency": prep_key_map.get(prep_transparency, prep_transparency),
+                        "commitments": commitment_data,
+                        "menus": menu_data,
+                        "images": image_manifest,
+                        "display_language": st.session_state.lang,
+                    }
+                    json_bytes = json.dumps(data_json, ensure_ascii=False, indent=2).encode("utf-8")
+                    zf.writestr(f"{store_slug}/data.json", json_bytes)
+
+                gs_images = []
                 zip_buffer.seek(0)
-                with zipfile.ZipFile(zip_buffer, "r") as zf:
-                    zf.extractall(submission_dir)
-                zip_buffer.seek(0)
-            except OSError:
-                pass  # クラウド環境ではスキップ
+                with zipfile.ZipFile(zip_buffer, "r") as zf_read:
+                    for entry in zf_read.namelist():
+                        if entry.endswith(".webp"):
+                            img_bytes = zf_read.read(entry)
+                            fname = entry.rsplit("/", 1)[-1]
+                            gs_images.append({
+                                "filename": fname,
+                                "data": base64.b64encode(img_bytes).decode("ascii"),
+                            })
 
-            active_url = webhook_url.strip()
-            if active_url:
+                # ローカル保存（Streamlit Cloud等では書き込み不可のためスキップ）
                 try:
-                    gs_resp = send_to_google(active_url, data_json, gs_images)
-                    if gs_resp.get("status") == "success":
-                        st.session_state["_submission_result"] = "success"
-                    else:
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    submission_dir = os.path.join("submissions", f"{timestamp}_{store_slug}")
+                    os.makedirs(os.path.join(submission_dir, "images"), exist_ok=True)
+                    zip_buffer.seek(0)
+                    with zipfile.ZipFile(zip_buffer, "r") as zf:
+                        zf.extractall(submission_dir)
+                    zip_buffer.seek(0)
+                except OSError:
+                    pass  # クラウド環境ではスキップ
+
+                active_url = webhook_url.strip()
+                if active_url:
+                    try:
+                        gs_resp = send_to_google(active_url, data_json, gs_images)
+                        if gs_resp.get("status") == "success":
+                            st.session_state["_submission_result"] = "success"
+                        else:
+                            st.session_state["_submission_result"] = "error"
+                            st.session_state["_submission_message"] = L("gs_error").format(
+                                err=gs_resp.get("message", "Unknown error"))
+                    except Exception as exc:
                         st.session_state["_submission_result"] = "error"
-                        st.session_state["_submission_message"] = L("gs_error").format(
-                            err=gs_resp.get("message", "Unknown error"))
-                except Exception as exc:
-                    st.session_state["_submission_result"] = "error"
-                    st.session_state["_submission_message"] = L("gs_error").format(err=str(exc)[:200])
-            else:
-                st.session_state["_submission_result"] = "success"
+                        st.session_state["_submission_message"] = L("gs_error").format(err=str(exc)[:200])
+                else:
+                    st.session_state["_submission_result"] = "success"
 
         except Exception as exc:
             err_msg = str(exc)[:300] if exc else "Unknown error"
