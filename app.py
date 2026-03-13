@@ -694,15 +694,28 @@ if "_submission_result" in st.session_state:
     st.stop()
 
 # ──────────────────────────────────────────────
-# 送信処理中：目立つバナーを最上部に表示（ボタン押下後すぐ表示）
+# 送信処理中：画面全体で「送信中」を強調表示（確認画面と明確に区別）
 # ──────────────────────────────────────────────
 if st.session_state.get("do_submit", False):
     st.markdown(
         f"""
-        <div style="text-align:center; padding:32px 20px; margin:0 0 24px 0; background:linear-gradient(135deg,#1565c0,#0d47a1);
-        border-radius:12px; color:#fff; box-shadow:0 4px 20px rgba(0,0,0,0.2);">
-        <div style="font-size:28px; font-weight:bold; margin-bottom:8px;">⏳ {L('sending_banner')}</div>
-        <div style="font-size:16px; opacity:0.95;">{L('sending_banner_sub')}</div>
+        <style>
+        @keyframes spin {{ 0% {{ transform: rotate(0deg); }} 100% {{ transform: rotate(360deg); }} }}
+        @keyframes pulse {{ 0%, 100% {{ opacity: 1; }} 50% {{ opacity: 0.7; }} }}
+        .sending-overlay {{
+            text-align: center; padding: 48px 24px; margin: 24px 0;
+            background: linear-gradient(135deg, #0d47a1 0%, #1565c0 50%, #1976d2 100%);
+            border-radius: 16px; color: #fff; box-shadow: 0 8px 32px rgba(13,71,161,0.5);
+            border: 4px solid #42a5f5; animation: pulse 1.5s ease-in-out infinite;
+        }}
+        .sending-spinner {{ display: inline-block; font-size: 48px; animation: spin 1s linear infinite; margin-bottom: 16px; }}
+        .sending-title {{ font-size: 32px; font-weight: bold; margin-bottom: 12px; letter-spacing: 0.1em; }}
+        .sending-sub {{ font-size: 18px; opacity: 0.95; }}
+        </style>
+        <div class="sending-overlay">
+        <div class="sending-spinner">⏳</div>
+        <div class="sending-title">{L('sending_banner')}</div>
+        <div class="sending-sub">{L('sending_banner_sub')}</div>
         </div>
         """,
         unsafe_allow_html=True,
