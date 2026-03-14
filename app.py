@@ -712,46 +712,69 @@ if manual_url and manual_url.strip():
 webhook_url = get_secret("WEBHOOK_URL", "")
 
 # ──────────────────────────────────────────────
-# Confirm&Submit押下後：最初に処理中ポップアップを表示（固まり防止）
+# Confirm&Submit押下後：先にバリデーション実行。エラー時はオーバーレイを出さずエラー表示
+# （オーバーレイがエラーを隠して進めない問題を解消）
 # ──────────────────────────────────────────────
 if st.session_state.get("_pending_confirm", False):
-    st.markdown(
-        f"""
-        <style>
-        @keyframes processing-spin {{
-            0% {{ transform: rotate(0deg); }}
-            100% {{ transform: rotate(360deg); }}
-        }}
-        @keyframes processing-pulse {{
-            0%, 100% {{ opacity: 1; }}
-            50% {{ opacity: 0.7; }}
-        }}
-        .processing-overlay {{
-            position: fixed !important; top: 0 !important; left: 0 !important; right: 0 !important; bottom: 0 !important;
-            z-index: 99999 !important; display: flex !important; align-items: center !important; justify-content: center !important;
-            background: rgba(0,0,0,0.5) !important; padding: 20px !important;
-        }}
-        .processing-popup {{
-            background: linear-gradient(135deg, #1565c0 0%, #0d47a1 100%) !important; color: #fff !important;
-            border-radius: 16px !important; padding: 32px 28px !important; text-align: center !important;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.3) !important; max-width: 90% !important;
-            animation: processing-pulse 1.5s ease-in-out infinite;
-        }}
-        .processing-popup .spinner {{
-            font-size: 48px !important; margin-bottom: 16px !important; display: inline-block !important;
-            animation: processing-spin 1s linear infinite !important;
-        }}
-        .processing-popup .msg {{ font-size: 18px !important; font-weight: bold !important; line-height: 1.4 !important; }}
-        </style>
-        <div class="processing-overlay">
-        <div class="processing-popup">
-        <span class="spinner">⏳</span>
-        <div class="msg">{L('after_confirm_click_msg')}</div>
-        </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    # セッションから値を取得して即バリデーション
+    _ss = st.session_state
+    _sn = _ss.get("store_name", "")
+    _ph = _ss.get("phone", "")
+    _ct = _ss.get("category", "")
+    _cn = _ss.get("contact_name", "")
+    _em = _ss.get("email", "")
+    _bh = _ss.get("business_hours", "")
+    _rh = _ss.get("regular_holiday", "")
+    _ns = _ss.get("nearest_station", "")
+    _lg = _ss.get("languages", [])
+    _wf = _ss.get("wifi_radio", "")
+    _pm = _ss.get("payments", [])
+    _hl = _ss.get("halal_level_radio", "")
+    _pt = _ss.get("prep_transparency_radio", "")
+    _tp = [_ss.get(f"comp_top_{i}") or _ss.get(f"top_photo_{i}") for i in range(3)]
+    _cp = [_ss.get(f"comp_cert_{i}") or _ss.get(f"cert_photo_{i}") for i in range(3)]
+    _hi = [{"photo": _ss.get(f"comp_hl_{i}") or _ss.get(f"highlight_photo_{i}"), "title": _ss.get(f"highlight_title_{i}", ""), "description": _ss.get(f"highlight_desc_{i}", "")} for i in range(3)]
+    _mn = [{"photo": _ss.get(f"comp_menu_{i}") or _ss.get(f"menu_photo_{i}"), "name": _ss.get(f"menu_name_{i}", ""), "description": _ss.get(f"menu_desc_{i}", "")} for i in range(3)]
+    _ip = [_ss.get(f"comp_int_{i}") or _ss.get(f"interior_photo_{i}") for i in range(5)]
+
+    _errs = []
+    if not _sn.strip():
+        _errs.append(L("required_store"))
+    if not _ph.strip():
+        _errs.append(L("required_phone"))
+    if not _em.strip():
+        _errs.append(L("required_email"))
+    elif not is_valid_email(_em):
+        _errs.append(L("invalid_email"))
+    if not _pm:
+        _errs.append(L("required_payment"))
+    if not all(_tp):
+        _errs.append(L("required_top3"))
+    if not [h for h in _hi if h["photo"] and h["title"].strip() and h["description"].strip()]:
+        _errs.append(L("required_highlights"))
+    if not [m for m in _mn if m["photo"] and m["name"].strip()]:
+        _errs.append(L("menu_min"))
+    if not any(_ip):
+        _errs.append(L("interior_min"))
+    if _hl == L("halal_full") and not any(_cp):
+        _errs.append(L("required_cert"))
+    for _f in [f for f in _tp if f] + [f for f in _cp if f] + [h["photo"] for h in _hi if h["photo"]] + [m["photo"] for m in _mn if m["photo"]] + [f for f in _ip if f]:
+        _errs.extend(validate_upload(_f))
+
+    if _errs:
+        st.session_state["_pending_confirm"] = False
+        st.session_state["_validation_errors"] = _errs
+    else:
+        st.session_state["_pending_confirm"] = False
+        st.session_state["_submit_data"] = {
+            "store_name": _sn, "phone": _ph, "category": _ct, "contact_name": _cn, "email": _em,
+            "business_hours": _bh, "regular_holiday": _rh, "nearest_station": _ns,
+            "languages": _lg, "wifi": _wf, "payment_methods": _pm,
+            "halal_level": _hl, "halal_level_display": _hl, "prep_transparency": _pt,
+            "top_photos": _tp, "cert_photos": _cp, "highlights": _hi, "menus": _mn, "interior_photos": _ip,
+        }
+        st.session_state.confirm_mode = True
+        st.rerun()
 
 # ──────────────────────────────────────────────
 # 送信結果表示（スマホで見やすいようページ上部に表示）
@@ -1325,88 +1348,17 @@ if st.session_state.do_submit:
         st.rerun()
     st.stop()
 
+# バリデーションエラー表示（Confirm押下時に先に実行済み。オーバーレイで隠れないよう最初に表示）
+if "_validation_errors" in st.session_state:
+    errs = st.session_state.pop("_validation_errors", [])
+    if errs:
+        st.error(L("validation_error"))
+        for e in errs:
+            st.warning(e)
+
 # 確認前メッセージ & 確認ボタン（通常フロー）
 st.info("📋 " + L("before_confirm_msg"))
 confirm_clicked = st.button(L("confirm_and_submit"), type="primary", use_container_width=True)
 if confirm_clicked:
     st.session_state["_pending_confirm"] = True
     st.rerun()
-
-# _pending_confirm の次run：上で「処理中」を表示済み。ここでバリデーション実行
-if st.session_state.get("_pending_confirm"):
-    errors = []
-
-    if not store_name.strip():
-        errors.append(L("required_store"))
-    if not phone.strip():
-        errors.append(L("required_phone"))
-    if not email.strip():
-        errors.append(L("required_email"))
-    elif not is_valid_email(email):
-        errors.append(L("invalid_email"))
-
-    if not payment_methods:
-        errors.append(L("required_payment"))
-
-    if not all(top_photos):
-        errors.append(L("required_top3"))
-
-    # Highlights: 最低1セット（写真+タイトル+説明）
-    complete_highlights = [h for h in highlights if h["photo"] and h["title"].strip() and h["description"].strip()]
-    if not complete_highlights:
-        errors.append(L("required_highlights"))
-
-    # Menu: 最低1つ（写真+名前）
-    complete_menus = [m for m in menus if m["photo"] and m["name"].strip()]
-    if not complete_menus:
-        errors.append(L("menu_min"))
-
-    # Interior: 最低1枚
-    if not any(interior_photos):
-        errors.append(L("interior_min"))
-
-    if halal_level == L("halal_full"):
-        if not any(cert_photos):
-            errors.append(L("required_cert"))
-
-    all_files = (
-        [f for f in top_photos if f]
-        + [f for f in cert_photos if f]
-        + [h["photo"] for h in highlights if h["photo"]]
-        + [m["photo"] for m in menus if m["photo"]]
-        + [f for f in interior_photos if f]
-    )
-    for f in all_files:
-        errors.extend(validate_upload(f))
-
-    if errors:
-        st.session_state["_pending_confirm"] = False
-        st.error(L("validation_error"))
-        for e in errors:
-            st.warning(e)
-    else:
-        # 確認モードへ：データを保存して確認画面表示（st.spinnerは使わず即時rerunで固まりを防ぐ）
-        st.session_state["_pending_confirm"] = False
-        st.session_state["_submit_data"] = {
-            "store_name": store_name,
-            "phone": phone,
-            "category": category,
-            "contact_name": contact_name,
-            "email": email,
-            "business_hours": business_hours,
-            "regular_holiday": regular_holiday,
-            "nearest_station": nearest_station,
-            "languages": languages,
-            "wifi": wifi,
-            "payment_methods": payment_methods,
-            "halal_level": halal_level,
-            "halal_level_display": halal_level,
-            "prep_transparency": prep_transparency,
-            "top_photos": top_photos,
-            "cert_photos": cert_photos,
-            "highlights": highlights,
-            "menus": menus,
-            "interior_photos": interior_photos,
-        }
-        st.session_state.confirm_mode = True
-        st.rerun()
