@@ -77,6 +77,7 @@ LABELS = {
         "back_to_form": "Back to Form",
         "download_zip": "Download ZIP",
         "validation_error": "Please fix the following errors:",
+        "validation_error_hint": "After fixing, scroll up and click the **Apply** button to save, then click Confirm & Submit again.",
         "required_store": "Store Name is required.",
         "required_phone": "Phone Number is required.",
         "required_email": "Email Address is required.",
@@ -195,6 +196,7 @@ LABELS = {
         "back_to_form": "フォームに戻る",
         "download_zip": "ZIPダウンロード",
         "validation_error": "以下のエラーを修正してください：",
+        "validation_error_hint": "修正後、上にスクロールして「反映する」ボタンを押してから、再度「確認して送信」をクリックしてください。",
         "required_store": "店舗名は必須です。",
         "required_phone": "電話番号は必須です。",
         "required_email": "メールアドレスは必須です。",
@@ -1355,6 +1357,7 @@ if "_validation_errors" in st.session_state:
         st.error(L("validation_error"))
         for e in errs:
             st.warning(e)
+        st.info("💡 " + L("validation_error_hint"))
 
 # 確認前メッセージ & 確認ボタン（通常フロー）
 st.info("📋 " + L("before_confirm_msg"))
