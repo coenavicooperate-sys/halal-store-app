@@ -2,7 +2,6 @@ import streamlit as st
 import json
 import os
 import re
-import time
 import zipfile
 import io
 import base64
@@ -104,6 +103,7 @@ LABELS = {
         "sending_msg": "Sending. This may take 1–2 minutes. Please do not close this page.",
         "sending_banner": "SENDING...",
         "sending_banner_sub": "This may take 1–2 minutes. Do not close this page.",
+        "form_apply": "Apply",
         "before_confirm_msg": "Click the button below to proceed to confirmation. Please wait a moment after clicking.",
         "after_confirm_click_msg": "Processing. This may take a moment. Please do not close this page.",
         "before_submit_msg": "Click the button below to submit. Sending may take 1–2 minutes. Do not close this page.",
@@ -134,7 +134,6 @@ LABELS = {
         "manual_link": "Input Manual",
         "session_hint": "Long input sessions may disconnect. Photos are automatically resized for optimal display.",
         "image_loading_msg": "Loading images. Please wait. Do not interact.",
-        "image_registering_msg": "Registering images. Please wait until they appear on screen. Do not interact.",
     },
     "ja": {
         "app_title": "ハラル対応レストラン 店舗情報登録",
@@ -222,6 +221,7 @@ LABELS = {
         "sending_msg": "送信中です。1〜2分かかる場合があります。このページを閉じないでください。",
         "sending_banner": "送信中",
         "sending_banner_sub": "1〜2分かかります。このページを閉じないでください。",
+        "form_apply": "反映する",
         "before_confirm_msg": "下のボタンをクリックすると確認画面に進みます。クリック後、少々お待ちください。",
         "after_confirm_click_msg": "処理中です。少々お待ちください。このページを閉じないでください。",
         "before_submit_msg": "下のボタンをクリックすると送信が開始されます。1〜2分かかる場合があります。このページを閉じないでください。",
@@ -252,7 +252,6 @@ LABELS = {
         "manual_link": "入力マニュアル",
         "session_hint": "長時間の入力で画面が切れる場合があります。写真は自動で最適サイズに縮小されます。",
         "image_loading_msg": "画像を読み込み中です。少々お待ちください。",
-        "image_registering_msg": "画像登録中です。画面に反映されるまでお待ちください。入力はご遠慮ください。",
     },
 }
 
@@ -320,16 +319,21 @@ def compress_uploaded_image(uploaded_file):
 def maybe_compress(file, cache_key: str):
     """圧縮可能なら圧縮版を返す。キャッシュで再圧縮を避け、サクサク動作。"""
     if not file:
-        for k in [cache_key, f"{cache_key}_src", f"{cache_key}_disp", f"{cache_key}_disp_src"]:
+        for k in [cache_key, f"{cache_key}_src", f"{cache_key}_disp", f"{cache_key}_disp_src", f"{cache_key}_ns", f"{cache_key}_disp_ns"]:
             st.session_state.pop(k, None)
         return None
-    # 同一ファイルならキャッシュを使用（毎回のrerunで再圧縮しない）
     src_id = f"{cache_key}_src"
+    ns_key = f"{cache_key}_ns"
+    name_size = (getattr(file, "name", ""), getattr(file, "size", 0))
+    # 同一ファイルならキャッシュを使用（id または name+size で判定、rerun時のオブジェクト差を吸収）
     if src_id in st.session_state and st.session_state[src_id] == id(file):
+        return st.session_state.get(cache_key, file)
+    if ns_key in st.session_state and st.session_state[ns_key] == name_size:
         return st.session_state.get(cache_key, file)
     result = compress_uploaded_image(file)
     st.session_state[cache_key] = result
     st.session_state[src_id] = id(file)
+    st.session_state[ns_key] = name_size
     return result
 
 
@@ -437,7 +441,15 @@ def display_image_cached(uploaded_file, cache_key: str):
     if not uploaded_file:
         return
     src_id = f"{cache_key}_disp_src"
+    ns_key = f"{cache_key}_disp_ns"
+    name_size = (getattr(uploaded_file, "name", ""), getattr(uploaded_file, "size", 0))
+    # キャッシュヒット（id または name+size で判定、rerun時のオブジェクト差を吸収）
     if src_id in st.session_state and st.session_state[src_id] == id(uploaded_file):
+        cached = st.session_state.get(f"{cache_key}_disp")
+        if cached is not None:
+            st.image(cached, use_container_width=True)
+            return
+    if ns_key in st.session_state and st.session_state[ns_key] == name_size:
         cached = st.session_state.get(f"{cache_key}_disp")
         if cached is not None:
             st.image(cached, use_container_width=True)
@@ -450,6 +462,7 @@ def display_image_cached(uploaded_file, cache_key: str):
             img = img.convert("RGB")
         st.session_state[f"{cache_key}_disp"] = img
         st.session_state[src_id] = id(uploaded_file)
+        st.session_state[ns_key] = name_size
         st.image(img, use_container_width=True)
         uploaded_file.seek(0)
     except Exception:
@@ -788,74 +801,11 @@ if st.session_state.get("do_submit", False):
     )
 
 if not st.session_state.get("do_submit", False):
-    # 画像あり時は「画像登録中」を表示して画面反映まで入力をブロック
     from contextlib import nullcontext
-
-    def _is_uploaded_file(v):
-        return v is not None and (hasattr(v, "name") or hasattr(v, "read"))
-
-    _photo_keys = (
-        [f"top_photo_{i}" for i in range(3)]
-        + [f"cert_photo_{i}" for i in range(3)]
-        + [f"highlight_photo_{i}" for i in range(3)]
-        + [f"menu_photo_{i}" for i in range(3)]
-        + [f"interior_photo_{i}" for i in range(5)]
-    )
-    _has_files = any(_is_uploaded_file(st.session_state.get(k)) for k in _photo_keys)
-    if not _has_files:
-        for v in st.session_state.values():
-            if _is_uploaded_file(v):
-                _has_files = True
-                break
-
-    # 画像セットの署名（変更検知用）
-    def _file_signature():
-        parts = []
-        for k in _photo_keys:
-            f = st.session_state.get(k)
-            if _is_uploaded_file(f):
-                parts.append(f"{k}:{getattr(f, 'name', '')}:{getattr(f, 'size', 0)}")
-        return "|".join(parts)
-
-    _current_sig = _file_signature() if _has_files else ""
-    _displayed_sig = st.session_state.get("_images_displayed_sig", "")
-    _need_display = _has_files and _current_sig and _current_sig != _displayed_sig
-
-    # 画像反映前：全画面オーバーレイで入力をブロック
-    if _need_display:
-        st.markdown(
-            f"""
-            <style>
-            .img-reg-overlay {{
-                position: fixed !important; top: 0 !important; left: 0 !important; right: 0 !important; bottom: 0 !important;
-                z-index: 99999 !important; display: flex !important; align-items: center !important; justify-content: center !important;
-                background: rgba(0,0,0,0.6) !important; padding: 20px !important;
-            }}
-            .img-reg-popup {{
-                background: linear-gradient(135deg, #1565c0 0%, #0d47a1 100%) !important; color: #fff !important;
-                border-radius: 16px !important; padding: 36px 28px !important; text-align: center !important;
-                box-shadow: 0 8px 32px rgba(0,0,0,0.3) !important; max-width: 90% !important;
-            }}
-            .img-reg-popup .spinner {{ font-size: 48px !important; margin-bottom: 16px !important; display: block !important; }}
-            .img-reg-popup .msg {{ font-size: 18px !important; font-weight: bold !important; line-height: 1.5 !important; }}
-            </style>
-            <div class="img-reg-overlay">
-            <div class="img-reg-popup">
-            <span class="spinner">⏳</span>
-            <div class="msg">{L('image_registering_msg')}</div>
-            </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-    if not _has_files:
-        st.session_state.pop("_images_displayed_sig", None)
+    _pending = st.session_state.get("_pending_confirm", False)
     _spinner_ctx = nullcontext()
 
     with _spinner_ctx:
-        if _has_files and not st.session_state.get("_pending_confirm", False) and not _need_display:
-            time.sleep(0.3)
         st.caption("💡 " + L("session_hint"))
         # ──────────────────────────────────────────────
         # Draft（長時間入力対策：こまめに保存を推奨）
@@ -901,188 +851,186 @@ if not st.session_state.get("do_submit", False):
                         st.info(L("draft_none"))
 
         # ──────────────────────────────────────────────
-        # Step 1: Basic Information
+        # Step 1-7: フォームで一括入力（反映ボタンまでリランなし＝読込感を解消）
         # ──────────────────────────────────────────────
-        st.header(L("step1"))
-        store_name = st.text_input(L("store_name"), key="store_name")
-        phone = st.text_input(L("phone"), key="phone")
-        category = st.selectbox(
-            L("category"),
-            options=CATEGORY_OPTIONS,
-            key="category",
-        )
-        contact_name = st.text_input(L("contact"), key="contact_name")
-        email = st.text_input(L("email"), key="email")
+        with st.form("main_form"):
+            st.header(L("step1"))
+            store_name = st.text_input(L("store_name"), key="store_name")
+            phone = st.text_input(L("phone"), key="phone")
+            category = st.selectbox(
+                L("category"),
+                options=CATEGORY_OPTIONS,
+                key="category",
+            )
+            contact_name = st.text_input(L("contact"), key="contact_name")
+            email = st.text_input(L("email"), key="email")
+
+            st.divider()
+
+            # ──────────────────────────────────────────────
+            # Step 2: Business Information
+            # ──────────────────────────────────────────────
+            st.header(L("step2"))
+            business_hours = st.text_area(L("business_hours"), key="business_hours")
+            regular_holiday = st.text_input(L("regular_holiday"), key="regular_holiday")
+            nearest_station = st.text_input(L("nearest_station"), key="nearest_station")
+
+            st.divider()
+
+            # ──────────────────────────────────────────────
+            # Step 3: Facilities & Services
+            # ──────────────────────────────────────────────
+            st.header(L("step3"))
+
+            # 日本に来るムスリム観光客に多い言語（6つ）
+            language_options = ["Arabic", "Chinese", "English", "Indonesian", "Malay", "Urdu"]
+            languages = st.multiselect(L("languages_available"), language_options, key="languages")
+
+            wifi_options = [L("wifi_available"), L("wifi_not_available")]
+            wifi = st.radio(L("wifi"), wifi_options, key="wifi_radio", horizontal=True)
+
+            # 観光客向け（Suica/PASMO等の国内決済は除外）
+            payment_options = [
+                "Cash", "Visa", "Mastercard", "JCB", "American Express",
+                "Alipay", "WeChat Pay", "UnionPay", "Apple Pay", "Google Pay", "Other",
+            ]
+            st.caption(L("required_payment"))
+            payment_methods = st.multiselect(L("payment_methods"), payment_options, key="payments")
+
+            halal_options = [
+                L("halal_full"),
+                L("halal_muslim_friendly"),
+                L("halal_menu"),
+                L("halal_no_pork"),
+                L("halal_vegan"),
+            ]
+            halal_level = st.radio(L("halal_level"), halal_options, key="halal_level_radio")
+
+            prep_options = [
+                L("prep_separate_kitchen"),
+                L("prep_separate_utensils"),
+                L("prep_dedicated_area"),
+                L("prep_same_kitchen"),
+                L("prep_unknown"),
+            ]
+            prep_transparency = st.radio(L("prep_transparency"), prep_options, key="prep_transparency_radio")
+
+            st.divider()
+
+            # ──────────────────────────────────────────────
+            # Step 4: Photo Upload
+            # ──────────────────────────────────────────────
+            st.header(L("step4"))
+
+            st.subheader(L("top_photos"))
+            st.markdown(f"**📐 {L('recommended_top')}**")
+            top_cols = st.columns(3)
+            top_photos = []
+            for i in range(3):
+                with top_cols[i]:
+                    f = st.file_uploader(
+                        L("top_n").format(n=i + 1),
+                        type=["jpg", "jpeg", "png", "webp"],
+                        key=f"top_photo_{i}",
+                    )
+                    f = maybe_compress(f, f"comp_top_{i}")
+                    top_photos.append(f)
+                    if f and not _pending:
+                        display_image_cached(f, f"comp_top_{i}")
+
+            st.subheader(L("cert_photos"))
+            st.markdown(f"**📐 {L('recommended_vert')}**")
+            if halal_level == L("halal_full"):
+                st.info(L("cert_required"))
+            cert_photos = []
+            cert_cols = st.columns(3)
+            for i in range(3):
+                with cert_cols[i]:
+                    f = st.file_uploader(
+                        L("cert_n").format(n=i + 1),
+                        type=["jpg", "jpeg", "png", "webp"],
+                        key=f"cert_photo_{i}",
+                    )
+                    f = maybe_compress(f, f"comp_cert_{i}")
+                    cert_photos.append(f)
+                    if f and not _pending:
+                        display_image_cached(f, f"comp_cert_{i}")
+
+            st.divider()
+
+            # ──────────────────────────────────────────────
+            # Step 5: Highlights
+            # ──────────────────────────────────────────────
+            st.header(L("step5"))
+            st.caption(L("highlights_min"))
+            st.markdown(f"**📐 {L('recommended_vert')}**")
+            highlight_cols = st.columns(3)
+            highlights = []
+            for i in range(3):
+                with highlight_cols[i]:
+                    st.markdown(f"**{L('highlight_n').format(n=i+1)}**")
+                    h_photo = st.file_uploader(
+                        L("highlight_photo"),
+                        type=["jpg", "jpeg", "png", "webp"],
+                        key=f"highlight_photo_{i}",
+                    )
+                    h_photo = maybe_compress(h_photo, f"comp_hl_{i}")
+                    if h_photo and not _pending:
+                        display_image_cached(h_photo, f"comp_hl_{i}")
+                    h_title = st.text_input(L("highlight_title"), key=f"highlight_title_{i}")
+                    h_desc = st.text_area(L("highlight_desc"), key=f"highlight_desc_{i}")
+                    highlights.append({"photo": h_photo, "title": h_title, "description": h_desc})
+
+            st.divider()
+
+            # ──────────────────────────────────────────────
+            # Step 6: Menu Information
+            # ──────────────────────────────────────────────
+            st.header(L("step6"))
+            st.caption(L("menu_min"))
+            st.markdown(f"**📐 {L('recommended_vert')}**")
+            menu_cols = st.columns(3)
+            menus = []
+            for i in range(3):
+                with menu_cols[i]:
+                    st.markdown(f"**{L('menu_n').format(n=i+1)}**")
+                    m_photo = st.file_uploader(
+                        L("menu_photo"),
+                        type=["jpg", "jpeg", "png", "webp"],
+                        key=f"menu_photo_{i}",
+                    )
+                    m_photo = maybe_compress(m_photo, f"comp_menu_{i}")
+                    if m_photo and not _pending:
+                        display_image_cached(m_photo, f"comp_menu_{i}")
+                    m_name = st.text_input(L("menu_name"), key=f"menu_name_{i}")
+                    m_desc = st.text_area(L("menu_desc"), key=f"menu_desc_{i}")
+                    menus.append({"photo": m_photo, "name": m_name, "description": m_desc})
+
+            st.divider()
+
+            # ──────────────────────────────────────────────
+            # Step 7: Interior / Exterior Photos
+            # ──────────────────────────────────────────────
+            st.header(L("step7"))
+            st.caption(L("interior_min"))
+            st.markdown(f"**📐 {L('recommended_vert')}**")
+            interior_photos = []
+            int_cols = st.columns(5)
+            for i in range(5):
+                with int_cols[i]:
+                    f = st.file_uploader(
+                        L("interior_n").format(n=i + 1),
+                        type=["jpg", "jpeg", "png", "webp"],
+                        key=f"interior_photo_{i}",
+                    )
+                    f = maybe_compress(f, f"comp_int_{i}")
+                    interior_photos.append(f)
+                    if f and not _pending:
+                        display_image_cached(f, f"comp_int_{i}")
+
+            st.form_submit_button(L("form_apply"))
 
         st.divider()
-
-        # ──────────────────────────────────────────────
-        # Step 2: Business Information
-        # ──────────────────────────────────────────────
-        st.header(L("step2"))
-        business_hours = st.text_area(L("business_hours"), key="business_hours")
-        regular_holiday = st.text_input(L("regular_holiday"), key="regular_holiday")
-        nearest_station = st.text_input(L("nearest_station"), key="nearest_station")
-
-        st.divider()
-
-        # ──────────────────────────────────────────────
-        # Step 3: Facilities & Services
-        # ──────────────────────────────────────────────
-        st.header(L("step3"))
-
-        # 日本に来るムスリム観光客に多い言語（6つ）
-        language_options = ["Arabic", "Chinese", "English", "Indonesian", "Malay", "Urdu"]
-        languages = st.multiselect(L("languages_available"), language_options, key="languages")
-
-        wifi_options = [L("wifi_available"), L("wifi_not_available")]
-        wifi = st.radio(L("wifi"), wifi_options, key="wifi_radio", horizontal=True)
-
-        # 観光客向け（Suica/PASMO等の国内決済は除外）
-        payment_options = [
-            "Cash", "Visa", "Mastercard", "JCB", "American Express",
-            "Alipay", "WeChat Pay", "UnionPay", "Apple Pay", "Google Pay", "Other",
-        ]
-        st.caption(L("required_payment"))
-        payment_methods = st.multiselect(L("payment_methods"), payment_options, key="payments")
-
-        halal_options = [
-            L("halal_full"),
-            L("halal_muslim_friendly"),
-            L("halal_menu"),
-            L("halal_no_pork"),
-            L("halal_vegan"),
-        ]
-        halal_level = st.radio(L("halal_level"), halal_options, key="halal_level_radio")
-
-        prep_options = [
-            L("prep_separate_kitchen"),
-            L("prep_separate_utensils"),
-            L("prep_dedicated_area"),
-            L("prep_same_kitchen"),
-            L("prep_unknown"),
-        ]
-        prep_transparency = st.radio(L("prep_transparency"), prep_options, key="prep_transparency_radio")
-
-        st.divider()
-
-        # ──────────────────────────────────────────────
-        # Step 4: Photo Upload
-        # ──────────────────────────────────────────────
-        st.header(L("step4"))
-
-        st.subheader(L("top_photos"))
-        st.markdown(f"**📐 {L('recommended_top')}**")
-        top_cols = st.columns(3)
-        top_photos = []
-        for i in range(3):
-            with top_cols[i]:
-                f = st.file_uploader(
-                    L("top_n").format(n=i + 1),
-                    type=["jpg", "jpeg", "png", "webp"],
-                    key=f"top_photo_{i}",
-                )
-                f = maybe_compress(f, f"comp_top_{i}")
-                top_photos.append(f)
-                if f:
-                    display_image_cached(f, f"comp_top_{i}")
-
-        st.subheader(L("cert_photos"))
-        st.markdown(f"**📐 {L('recommended_vert')}**")
-        if halal_level == L("halal_full"):
-            st.info(L("cert_required"))
-        cert_photos = []
-        cert_cols = st.columns(3)
-        for i in range(3):
-            with cert_cols[i]:
-                f = st.file_uploader(
-                    L("cert_n").format(n=i + 1),
-                    type=["jpg", "jpeg", "png", "webp"],
-                    key=f"cert_photo_{i}",
-                )
-                f = maybe_compress(f, f"comp_cert_{i}")
-                cert_photos.append(f)
-                if f:
-                    display_image_cached(f, f"comp_cert_{i}")
-
-        st.divider()
-
-        # ──────────────────────────────────────────────
-        # Step 5: Highlights
-        # ──────────────────────────────────────────────
-        st.header(L("step5"))
-        st.caption(L("highlights_min"))
-        st.markdown(f"**📐 {L('recommended_vert')}**")
-        highlight_cols = st.columns(3)
-        highlights = []
-        for i in range(3):
-            with highlight_cols[i]:
-                st.markdown(f"**{L('highlight_n').format(n=i+1)}**")
-                h_photo = st.file_uploader(
-                    L("highlight_photo"),
-                    type=["jpg", "jpeg", "png", "webp"],
-                    key=f"highlight_photo_{i}",
-                )
-                h_photo = maybe_compress(h_photo, f"comp_hl_{i}")
-                if h_photo:
-                    display_image_cached(h_photo, f"comp_hl_{i}")
-                h_title = st.text_input(L("highlight_title"), key=f"highlight_title_{i}")
-                h_desc = st.text_area(L("highlight_desc"), key=f"highlight_desc_{i}")
-                highlights.append({"photo": h_photo, "title": h_title, "description": h_desc})
-
-        st.divider()
-
-        # ──────────────────────────────────────────────
-        # Step 6: Menu Information
-        # ──────────────────────────────────────────────
-        st.header(L("step6"))
-        st.caption(L("menu_min"))
-        st.markdown(f"**📐 {L('recommended_vert')}**")
-        menu_cols = st.columns(3)
-        menus = []
-        for i in range(3):
-            with menu_cols[i]:
-                st.markdown(f"**{L('menu_n').format(n=i+1)}**")
-                m_photo = st.file_uploader(
-                    L("menu_photo"),
-                    type=["jpg", "jpeg", "png", "webp"],
-                    key=f"menu_photo_{i}",
-                )
-                m_photo = maybe_compress(m_photo, f"comp_menu_{i}")
-                if m_photo:
-                    display_image_cached(m_photo, f"comp_menu_{i}")
-                m_name = st.text_input(L("menu_name"), key=f"menu_name_{i}")
-                m_desc = st.text_area(L("menu_desc"), key=f"menu_desc_{i}")
-                menus.append({"photo": m_photo, "name": m_name, "description": m_desc})
-
-        st.divider()
-
-        # ──────────────────────────────────────────────
-        # Step 7: Interior / Exterior Photos
-        # ──────────────────────────────────────────────
-        st.header(L("step7"))
-        st.caption(L("interior_min"))
-        st.markdown(f"**📐 {L('recommended_vert')}**")
-        interior_photos = []
-        int_cols = st.columns(5)
-        for i in range(5):
-            with int_cols[i]:
-                f = st.file_uploader(
-                    L("interior_n").format(n=i + 1),
-                    type=["jpg", "jpeg", "png", "webp"],
-                    key=f"interior_photo_{i}",
-                )
-                f = maybe_compress(f, f"comp_int_{i}")
-                interior_photos.append(f)
-                if f:
-                    display_image_cached(f, f"comp_int_{i}")
-
-        st.divider()
-
-        # 画像反映完了後：オーバーレイを外すためrerun
-        if _need_display:
-            st.session_state["_images_displayed_sig"] = _current_sig
-            st.rerun()
 
 # ──────────────────────────────────────────────
 # Step 8: Confirm & Submit
